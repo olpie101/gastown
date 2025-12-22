@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -72,7 +73,7 @@ var rigRemoveCmd = &cobra.Command{
 
 var rigResetCmd = &cobra.Command{
 	Use:   "reset",
-	Short: "Reset rig state (handoff content, mail, etc.)",
+	Short: "Reset rig state (handoff content, mail, stale issues)",
 	Long: `Reset various rig state.
 
 By default, resets all resettable state. Use flags to reset specific items.
@@ -80,7 +81,9 @@ By default, resets all resettable state. Use flags to reset specific items.
 Examples:
   gt rig reset              # Reset all state
   gt rig reset --handoff    # Clear handoff content only
-  gt rig reset --mail       # Clear stale mail messages only`,
+  gt rig reset --mail       # Clear stale mail messages only
+  gt rig reset --stale      # Reset orphaned in_progress issues
+  gt rig reset --stale --dry-run  # Preview what would be reset`,
 	RunE: runRigReset,
 }
 
@@ -116,6 +119,8 @@ var (
 	rigAddCrew         string
 	rigResetHandoff    bool
 	rigResetMail       bool
+	rigResetStale      bool
+	rigResetDryRun     bool
 	rigResetRole       string
 	rigShutdownForce   bool
 	rigShutdownNuclear bool
@@ -134,6 +139,8 @@ func init() {
 
 	rigResetCmd.Flags().BoolVar(&rigResetHandoff, "handoff", false, "Clear handoff content")
 	rigResetCmd.Flags().BoolVar(&rigResetMail, "mail", false, "Clear stale mail messages")
+	rigResetCmd.Flags().BoolVar(&rigResetStale, "stale", false, "Reset orphaned in_progress issues (no active session)")
+	rigResetCmd.Flags().BoolVar(&rigResetDryRun, "dry-run", false, "Show what would be reset without making changes")
 	rigResetCmd.Flags().StringVar(&rigResetRole, "role", "", "Role to reset (default: auto-detect from cwd)")
 
 	rigShutdownCmd.Flags().BoolVarP(&rigShutdownForce, "force", "f", false, "Force immediate shutdown")
@@ -324,13 +331,16 @@ func runRigReset(cmd *cobra.Command, args []string) error {
 	}
 
 	// If no specific flags, reset all; otherwise only reset what's specified
-	resetAll := !rigResetHandoff && !rigResetMail
+	resetAll := !rigResetHandoff && !rigResetMail && !rigResetStale
 
-	bd := beads.New(townRoot)
+	// Town beads for handoff/mail operations
+	townBd := beads.New(townRoot)
+	// Rig beads for issue operations (uses cwd to find .beads/)
+	rigBd := beads.New(cwd)
 
 	// Reset handoff content
 	if resetAll || rigResetHandoff {
-		if err := bd.ClearHandoffContent(roleKey); err != nil {
+		if err := townBd.ClearHandoffContent(roleKey); err != nil {
 			return fmt.Errorf("clearing handoff content: %w", err)
 		}
 		fmt.Printf("%s Cleared handoff content for %s\n", style.Success.Render("✓"), roleKey)
@@ -338,7 +348,7 @@ func runRigReset(cmd *cobra.Command, args []string) error {
 
 	// Clear stale mail messages
 	if resetAll || rigResetMail {
-		result, err := bd.ClearMail("Cleared during reset")
+		result, err := townBd.ClearMail("Cleared during reset")
 		if err != nil {
 			return fmt.Errorf("clearing mail: %w", err)
 		}
@@ -350,7 +360,137 @@ func runRigReset(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Reset stale in_progress issues
+	if resetAll || rigResetStale {
+		if err := runResetStale(rigBd, rigResetDryRun); err != nil {
+			return fmt.Errorf("resetting stale issues: %w", err)
+		}
+	}
+
 	return nil
+}
+
+// runResetStale resets in_progress issues whose assigned agent no longer has a session.
+func runResetStale(bd *beads.Beads, dryRun bool) error {
+	t := tmux.NewTmux()
+
+	// Get all in_progress issues
+	issues, err := bd.List(beads.ListOptions{
+		Status:   "in_progress",
+		Priority: -1, // All priorities
+	})
+	if err != nil {
+		return fmt.Errorf("listing in_progress issues: %w", err)
+	}
+
+	if len(issues) == 0 {
+		fmt.Printf("%s No in_progress issues found\n", style.Success.Render("✓"))
+		return nil
+	}
+
+	var resetCount, skippedCount int
+	var resetIssues []string
+
+	for _, issue := range issues {
+		if issue.Assignee == "" {
+			continue // No assignee to check
+		}
+
+		// Parse assignee: rig/name or rig/crew/name
+		sessionName, isPersistent := assigneeToSessionName(issue.Assignee)
+		if sessionName == "" {
+			continue // Couldn't parse assignee
+		}
+
+		// Check if session exists
+		hasSession, err := t.HasSession(sessionName)
+		if err != nil {
+			// tmux error, skip this one
+			continue
+		}
+
+		if hasSession {
+			continue // Session exists, not stale
+		}
+
+		// For crew (persistent identities), only reset if explicitly checking sessions
+		if isPersistent {
+			skippedCount++
+			if dryRun {
+				fmt.Printf("  %s: %s %s\n",
+					style.Dim.Render(issue.ID),
+					issue.Assignee,
+					style.Dim.Render("(persistent, skipped)"))
+			}
+			continue
+		}
+
+		// Session doesn't exist - this is stale
+		if dryRun {
+			fmt.Printf("  %s: %s (no session) → open\n",
+				style.Bold.Render(issue.ID),
+				issue.Assignee)
+		} else {
+			// Reset status to open and clear assignee
+			openStatus := "open"
+			emptyAssignee := ""
+			if err := bd.Update(issue.ID, beads.UpdateOptions{
+				Status:   &openStatus,
+				Assignee: &emptyAssignee,
+			}); err != nil {
+				fmt.Printf("  %s Failed to reset %s: %v\n",
+					style.Warning.Render("⚠"),
+					issue.ID, err)
+				continue
+			}
+		}
+		resetCount++
+		resetIssues = append(resetIssues, issue.ID)
+	}
+
+	if dryRun {
+		if resetCount > 0 || skippedCount > 0 {
+			fmt.Printf("\n%s Would reset %d issues, skip %d persistent\n",
+				style.Dim.Render("(dry-run)"),
+				resetCount, skippedCount)
+		} else {
+			fmt.Printf("%s No stale issues found\n", style.Success.Render("✓"))
+		}
+	} else {
+		if resetCount > 0 {
+			fmt.Printf("%s Reset %d stale issues: %v\n",
+				style.Success.Render("✓"),
+				resetCount, resetIssues)
+		} else {
+			fmt.Printf("%s No stale issues to reset\n", style.Success.Render("✓"))
+		}
+		if skippedCount > 0 {
+			fmt.Printf("  Skipped %d persistent (crew) issues\n", skippedCount)
+		}
+	}
+
+	return nil
+}
+
+// assigneeToSessionName converts an assignee (rig/name or rig/crew/name) to tmux session name.
+// Returns the session name and whether this is a persistent identity (crew).
+func assigneeToSessionName(assignee string) (sessionName string, isPersistent bool) {
+	parts := strings.Split(assignee, "/")
+
+	switch len(parts) {
+	case 2:
+		// rig/polecatName -> gt-rig-polecatName
+		return fmt.Sprintf("gt-%s-%s", parts[0], parts[1]), false
+	case 3:
+		// rig/crew/name -> gt-rig-crew-name
+		if parts[1] == "crew" {
+			return fmt.Sprintf("gt-%s-crew-%s", parts[0], parts[2]), true
+		}
+		// Other 3-part formats not recognized
+		return "", false
+	default:
+		return "", false
+	}
 }
 
 // Helper to check if path exists
