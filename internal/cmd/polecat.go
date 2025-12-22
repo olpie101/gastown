@@ -10,14 +10,12 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/steveyegge/gastown/internal/config"
 	"github.com/steveyegge/gastown/internal/git"
 	"github.com/steveyegge/gastown/internal/polecat"
 	"github.com/steveyegge/gastown/internal/rig"
 	"github.com/steveyegge/gastown/internal/session"
 	"github.com/steveyegge/gastown/internal/style"
 	"github.com/steveyegge/gastown/internal/tmux"
-	"github.com/steveyegge/gastown/internal/workspace"
 )
 
 // Polecat command flags
@@ -239,28 +237,11 @@ type PolecatListItem struct {
 
 // getPolecatManager creates a polecat manager for the given rig.
 func getPolecatManager(rigName string) (*polecat.Manager, *rig.Rig, error) {
-	// Find town root
-	townRoot, err := workspace.FindFromCwdOrError()
+	_, r, err := getRig(rigName)
 	if err != nil {
-		return nil, nil, fmt.Errorf("not in a Gas Town workspace: %w", err)
+		return nil, nil, err
 	}
 
-	// Load rigs config
-	rigsConfigPath := filepath.Join(townRoot, "mayor", "rigs.json")
-	rigsConfig, err := config.LoadRigsConfig(rigsConfigPath)
-	if err != nil {
-		rigsConfig = &config.RigsConfig{Rigs: make(map[string]config.RigEntry)}
-	}
-
-	// Get rig
-	g := git.NewGit(townRoot)
-	rigMgr := rig.NewManager(townRoot, rigsConfig, g)
-	r, err := rigMgr.GetRig(rigName)
-	if err != nil {
-		return nil, nil, fmt.Errorf("rig '%s' not found", rigName)
-	}
-
-	// Create polecat manager
 	polecatGit := git.NewGit(r.Path)
 	mgr := polecat.NewManager(r, polecatGit)
 

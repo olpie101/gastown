@@ -5,17 +5,13 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/steveyegge/gastown/internal/config"
-	"github.com/steveyegge/gastown/internal/git"
 	"github.com/steveyegge/gastown/internal/rig"
 	"github.com/steveyegge/gastown/internal/style"
 	"github.com/steveyegge/gastown/internal/tmux"
 	"github.com/steveyegge/gastown/internal/witness"
-	"github.com/steveyegge/gastown/internal/workspace"
 )
 
 // Witness command flags
@@ -100,22 +96,9 @@ func init() {
 
 // getWitnessManager creates a witness manager for a rig.
 func getWitnessManager(rigName string) (*witness.Manager, *rig.Rig, error) {
-	townRoot, err := workspace.FindFromCwdOrError()
+	_, r, err := getRig(rigName)
 	if err != nil {
-		return nil, nil, fmt.Errorf("not in a Gas Town workspace: %w", err)
-	}
-
-	rigsConfigPath := filepath.Join(townRoot, "mayor", "rigs.json")
-	rigsConfig, err := config.LoadRigsConfig(rigsConfigPath)
-	if err != nil {
-		rigsConfig = &config.RigsConfig{Rigs: make(map[string]config.RigEntry)}
-	}
-
-	g := git.NewGit(townRoot)
-	rigMgr := rig.NewManager(townRoot, rigsConfig, g)
-	r, err := rigMgr.GetRig(rigName)
-	if err != nil {
-		return nil, nil, fmt.Errorf("rig '%s' not found", rigName)
+		return nil, nil, err
 	}
 
 	mgr := witness.NewManager(r)

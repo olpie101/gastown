@@ -8,7 +8,6 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/steveyegge/gastown/internal/config"
 	"github.com/steveyegge/gastown/internal/crew"
 	"github.com/steveyegge/gastown/internal/git"
 	"github.com/steveyegge/gastown/internal/rig"
@@ -42,36 +41,23 @@ func inferRigFromCwd(townRoot string) (string, error) {
 
 // getCrewManager returns a crew manager for the specified or inferred rig.
 func getCrewManager(rigName string) (*crew.Manager, *rig.Rig, error) {
-	// Find town root
-	townRoot, err := workspace.FindFromCwdOrError()
-	if err != nil {
-		return nil, nil, fmt.Errorf("not in a Gas Town workspace: %w", err)
-	}
-
-	// Load rigs config
-	rigsConfigPath := filepath.Join(townRoot, "mayor", "rigs.json")
-	rigsConfig, err := config.LoadRigsConfig(rigsConfigPath)
-	if err != nil {
-		rigsConfig = &config.RigsConfig{Rigs: make(map[string]config.RigEntry)}
-	}
-
-	// Determine rig
+	// Handle optional rig inference from cwd
 	if rigName == "" {
+		townRoot, err := workspace.FindFromCwdOrError()
+		if err != nil {
+			return nil, nil, fmt.Errorf("not in a Gas Town workspace: %w", err)
+		}
 		rigName, err = inferRigFromCwd(townRoot)
 		if err != nil {
 			return nil, nil, fmt.Errorf("could not determine rig (use --rig flag): %w", err)
 		}
 	}
 
-	// Get rig
-	g := git.NewGit(townRoot)
-	rigMgr := rig.NewManager(townRoot, rigsConfig, g)
-	r, err := rigMgr.GetRig(rigName)
+	_, r, err := getRig(rigName)
 	if err != nil {
-		return nil, nil, fmt.Errorf("rig '%s' not found", rigName)
+		return nil, nil, err
 	}
 
-	// Create crew manager
 	crewGit := git.NewGit(r.Path)
 	crewMgr := crew.NewManager(r, crewGit)
 

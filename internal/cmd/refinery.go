@@ -114,22 +114,9 @@ func init() {
 
 // getRefineryManager creates a refinery manager for a rig.
 func getRefineryManager(rigName string) (*refinery.Manager, *rig.Rig, error) {
-	townRoot, err := workspace.FindFromCwdOrError()
+	_, r, err := getRig(rigName)
 	if err != nil {
-		return nil, nil, fmt.Errorf("not in a Gas Town workspace: %w", err)
-	}
-
-	rigsConfigPath := filepath.Join(townRoot, "mayor", "rigs.json")
-	rigsConfig, err := config.LoadRigsConfig(rigsConfigPath)
-	if err != nil {
-		rigsConfig = &config.RigsConfig{Rigs: make(map[string]config.RigEntry)}
-	}
-
-	g := git.NewGit(townRoot)
-	rigMgr := rig.NewManager(townRoot, rigsConfig, g)
-	r, err := rigMgr.GetRig(rigName)
-	if err != nil {
-		return nil, nil, fmt.Errorf("rig '%s' not found", rigName)
+		return nil, nil, err
 	}
 
 	mgr := refinery.NewManager(r)

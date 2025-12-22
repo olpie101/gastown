@@ -181,28 +181,11 @@ func parseAddress(addr string) (rigName, polecatName string, err error) {
 
 // getSessionManager creates a session manager for the given rig.
 func getSessionManager(rigName string) (*session.Manager, *rig.Rig, error) {
-	// Find town root
-	townRoot, err := workspace.FindFromCwdOrError()
+	_, r, err := getRig(rigName)
 	if err != nil {
-		return nil, nil, fmt.Errorf("not in a Gas Town workspace: %w", err)
+		return nil, nil, err
 	}
 
-	// Load rigs config
-	rigsConfigPath := filepath.Join(townRoot, "mayor", "rigs.json")
-	rigsConfig, err := config.LoadRigsConfig(rigsConfigPath)
-	if err != nil {
-		rigsConfig = &config.RigsConfig{Rigs: make(map[string]config.RigEntry)}
-	}
-
-	// Get rig
-	g := git.NewGit(townRoot)
-	rigMgr := rig.NewManager(townRoot, rigsConfig, g)
-	r, err := rigMgr.GetRig(rigName)
-	if err != nil {
-		return nil, nil, fmt.Errorf("rig '%s' not found", rigName)
-	}
-
-	// Create session manager
 	t := tmux.NewTmux()
 	mgr := session.NewManager(t, r)
 
