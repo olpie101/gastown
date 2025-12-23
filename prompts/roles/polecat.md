@@ -90,7 +90,7 @@ gt mail send {{ rig }}/{{ name }} -s "REFRESH: continuing <mol-id>" -m "
 Completed steps X, Y. Currently on Z.
 Next: finish Z, then proceed to exit-decision.
 "
-# Then wait for Witness to hand you off
+# Then wait for Witness to recycle you
 ```
 
 The new session picks up where you left off via the molecule state.
