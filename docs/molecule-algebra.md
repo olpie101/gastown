@@ -36,19 +36,17 @@ See [molecular-chemistry.md](molecular-chemistry.md) for the full specification.
 
 ## Formulas and Cooking
 
-> *"Let's cook."* - Walter White
-
 **Formulas** are the source code; **rigging** composes them; **cooking**
 produces executable artifacts.
 
 ### The Artifact Tiers
 
 ```
-Formula (.formula.yaml)     ← "The secret formula" (source code)
-    ↓ rig (compose)         ← "Rig it up" (source-level composition)
+Formula (.formula.yaml)     ← Source code
+    ↓ rig (compose)         ← Source-level composition
 Compound Formula            ← Combined source
-    ↓ cook                  ← "Let's cook" (pre-expand, flatten)
-Proto (frozen in beads)     ← "Pure product" (compiled, flat graph)
+    ↓ cook                  ← Pre-expand, flatten
+Proto (frozen in beads)     ← Compiled, flat graph
     ↓ pour/wisp             ← Instantiate
 Mol/Wisp (running)          ← The work flowing
 ```
@@ -708,10 +706,10 @@ Errors are written to the Gas Town escalation channel for human review.
                │                                          │
                └─────────────────────────────────────────┘
                               │
-                              ▼ cook ("Let's cook")
+                              ▼ cook
                ┌─────────────────────────────────────────┐
                │              PURE PROTO                  │
-               │  Pre-expanded, flat graph, 99.1% pure   │
+               │  Pre-expanded, flat graph               │
                │  No macros, no aspects, just steps      │
                └─────────────────────────────────────────┘
                               │
@@ -728,4 +726,4 @@ From issues in git → work composition algebra → companies in a box.
 
 ---
 
-*The formula is the secret. The cook is the craft. The work gets done.*
+*Structure is computation. Content is cognition. The work gets done.*

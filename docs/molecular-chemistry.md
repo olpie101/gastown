@@ -101,8 +101,6 @@ In our chemistry:
 
 ## Formulas: The Source Layer
 
-> *"The formula is the secret. The cook is the craft."*
-
 **Formulas** sit above protos in the artifact hierarchy. They're the source code -
 YAML files that define workflows with composition operators.
 
@@ -973,5 +971,4 @@ Install alternatives from the Mol Mall:
 
 ---
 
-*The formula is the secret. The cook is the craft. The chemistry is the interface.
-The ledger is the truth. The work gets done.*
+*The chemistry is the interface. The ledger is the truth. The work gets done.*
