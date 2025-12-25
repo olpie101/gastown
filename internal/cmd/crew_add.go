@@ -16,6 +16,16 @@ import (
 func runCrewAdd(cmd *cobra.Command, args []string) error {
 	name := args[0]
 
+	// Parse rig/name format (e.g., "beads/emma" -> rig=beads, name=emma)
+	// This prevents creating nested directories like crew/beads/emma
+	rigName := crewRig
+	if parsedRig, crewName, ok := parseRigSlashName(name); ok {
+		if rigName == "" {
+			rigName = parsedRig
+		}
+		name = crewName
+	}
+
 	// Find workspace
 	townRoot, err := workspace.FindFromCwdOrError()
 	if err != nil {
@@ -29,8 +39,7 @@ func runCrewAdd(cmd *cobra.Command, args []string) error {
 		rigsConfig = &config.RigsConfig{Rigs: make(map[string]config.RigEntry)}
 	}
 
-	// Determine rig
-	rigName := crewRig
+	// Determine rig (if not already set from slash format or --rig flag)
 	if rigName == "" {
 		// Try to infer from cwd
 		rigName, err = inferRigFromCwd(townRoot)
