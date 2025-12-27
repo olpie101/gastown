@@ -98,7 +98,7 @@ needs = ["test"]
 ```bash
 bd formula list                    # See available formulas
 bd cook shiny                      # Cook into a protomolecule
-bd pour shiny --var feature=auth   # Create runnable molecule
+bd mol pour shiny --var feature=auth   # Create runnable molecule
 gt sling gt-xyz myproject          # Assign to worker
 ```
 

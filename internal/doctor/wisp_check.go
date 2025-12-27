@@ -124,15 +124,15 @@ func (c *WispGCCheck) countAbandonedWisps(rigPath string) int {
 	return count
 }
 
-// Fix runs bd wisp gc in each rig with abandoned wisps.
+// Fix runs bd mol wisp gc in each rig with abandoned wisps.
 func (c *WispGCCheck) Fix(ctx *CheckContext) error {
 	var lastErr error
 
 	for rigName := range c.abandonedRigs {
 		rigPath := filepath.Join(ctx.TownRoot, rigName)
 
-		// Run bd --no-daemon wisp gc
-		cmd := exec.Command("bd", "--no-daemon", "wisp", "gc")
+		// Run bd --no-daemon mol wisp gc
+		cmd := exec.Command("bd", "--no-daemon", "mol", "wisp", "gc")
 		cmd.Dir = rigPath
 		if output, err := cmd.CombinedOutput(); err != nil {
 			lastErr = fmt.Errorf("%s: %v (%s)", rigName, err, string(output))

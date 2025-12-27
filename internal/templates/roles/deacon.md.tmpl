@@ -66,7 +66,7 @@ gt mail inbox
 gt mol attach-from-mail <mail-id>
 
 # Step 3: Still nothing? Create patrol wisp (two-step: create then pin)
-bd wisp create mol-deacon-patrol
+bd mol wisp create mol-deacon-patrol
 bd update <wisp-id> --status=pinned --assignee=deacon
 ```
 
@@ -135,7 +135,7 @@ Then squash and decide:
 bd mol squash <wisp-id> --summary="Patrol complete: checked inbox, scanned health, no issues"
 
 # Option A: Loop (low context)
-bd wisp create mol-deacon-patrol
+bd mol wisp create mol-deacon-patrol
 bd update <wisp-id> --status=pinned --assignee=deacon
 # Continue to first step...
 

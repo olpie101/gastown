@@ -110,9 +110,9 @@ Formula (source TOML) ─── "Ice-9"
     ▼ bd cook
 Protomolecule (frozen template) ─── Solid
     │
-    ├─▶ bd pour ──▶ Mol (persistent) ─── Liquid ──▶ bd squash ──▶ Digest
+    ├─▶ bd mol pour ──▶ Mol (persistent) ─── Liquid ──▶ bd squash ──▶ Digest
     │
-    └─▶ bd wisp ──▶ Wisp (ephemeral) ─── Vapor ──┬▶ bd squash ──▶ Digest
+    └─▶ bd mol wisp ──▶ Wisp (ephemeral) ─── Vapor ──┬▶ bd squash ──▶ Digest
                                                   └▶ bd burn ──▶ (gone)
 ```
 
@@ -130,8 +130,8 @@ bd cook <formula>            # Formula → Proto
 # Molecules
 bd mol list                  # Available protos
 bd mol show <id>             # Proto details
-bd pour <proto>              # Create mol
-bd wisp <proto>              # Create wisp
+bd mol pour <proto>          # Create mol
+bd mol wisp <proto>          # Create wisp
 bd mol bond <proto> <parent> # Attach to existing mol
 bd mol squash <id>           # Condense to digest
 bd mol burn <id>             # Discard wisp
@@ -237,7 +237,7 @@ Deacon, Witness, and Refinery run continuous patrol loops using wisps:
 | **Refinery** | `mol-refinery-patrol` | Process merge queue, review PRs |
 
 ```
-1. bd wisp mol-<role>-patrol
+1. bd mol wisp mol-<role>-patrol
 2. Execute steps (check workers, process queue, run plugins)
 3. bd mol squash (or burn if routine)
 4. Loop
