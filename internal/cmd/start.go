@@ -148,6 +148,35 @@ func runStart(cmd *cobra.Command, args []string) error {
 
 	fmt.Printf("Starting Gas Town from %s\n\n", style.Dim.Render(townRoot))
 
+	// Start core agents (Mayor and Deacon)
+	if err := startCoreAgents(t); err != nil {
+		return err
+	}
+
+	// If --all, start witnesses and refineries for all rigs
+	if startAll {
+		fmt.Println()
+		fmt.Println("Starting rig agents...")
+		startRigAgents(t, townRoot)
+	}
+
+	// Auto-start configured crew for each rig
+	fmt.Println()
+	fmt.Println("Starting configured crew...")
+	startConfiguredCrew(t, townRoot)
+
+	fmt.Println()
+	fmt.Printf("%s Gas Town is running\n", style.Bold.Render("✓"))
+	fmt.Println()
+	fmt.Printf("  Attach to Mayor:  %s\n", style.Dim.Render("gt mayor attach"))
+	fmt.Printf("  Attach to Deacon: %s\n", style.Dim.Render("gt deacon attach"))
+	fmt.Printf("  Check status:     %s\n", style.Dim.Render("gt status"))
+
+	return nil
+}
+
+// startCoreAgents starts Mayor and Deacon sessions.
+func startCoreAgents(t *tmux.Tmux) error {
 	// Start Mayor first (so Deacon sees it as up)
 	mayorRunning, _ := t.HasSession(MayorSessionName)
 	if mayorRunning {
@@ -172,86 +201,78 @@ func runStart(cmd *cobra.Command, args []string) error {
 		fmt.Printf("  %s Deacon started\n", style.Bold.Render("✓"))
 	}
 
-	// If --all, start witnesses and refineries for all rigs
-	if startAll {
-		fmt.Println()
-		fmt.Println("Starting rig agents...")
+	return nil
+}
 
-		rigs, err := discoverAllRigs(townRoot)
-		if err != nil {
-			fmt.Printf("  %s Could not discover rigs: %v\n", style.Dim.Render("○"), err)
-		} else {
-			for _, r := range rigs {
-				// Start Witness
-				witnessSession := fmt.Sprintf("gt-%s-witness", r.Name)
-				witnessRunning, _ := t.HasSession(witnessSession)
-				if witnessRunning {
-					fmt.Printf("  %s %s witness already running\n", style.Dim.Render("○"), r.Name)
-				} else {
-					created, err := ensureWitnessSession(r.Name, r)
-					if err != nil {
-						fmt.Printf("  %s %s witness failed: %v\n", style.Dim.Render("○"), r.Name, err)
-					} else if created {
-						fmt.Printf("  %s %s witness started\n", style.Bold.Render("✓"), r.Name)
-					}
-				}
-
-				// Start Refinery
-				refinerySession := fmt.Sprintf("gt-%s-refinery", r.Name)
-				refineryRunning, _ := t.HasSession(refinerySession)
-				if refineryRunning {
-					fmt.Printf("  %s %s refinery already running\n", style.Dim.Render("○"), r.Name)
-				} else {
-					created, err := ensureRefinerySession(r.Name, r)
-					if err != nil {
-						fmt.Printf("  %s %s refinery failed: %v\n", style.Dim.Render("○"), r.Name, err)
-					} else if created {
-						fmt.Printf("  %s %s refinery started\n", style.Bold.Render("✓"), r.Name)
-					}
-				}
-			}
-		}
-	}
-
-	// Auto-start configured crew for each rig
-	fmt.Println()
-	fmt.Println("Starting configured crew...")
-
+// startRigAgents starts witness and refinery for all rigs.
+// Called when --all flag is passed to gt start.
+func startRigAgents(t *tmux.Tmux, townRoot string) {
 	rigs, err := discoverAllRigs(townRoot)
 	if err != nil {
 		fmt.Printf("  %s Could not discover rigs: %v\n", style.Dim.Render("○"), err)
-	} else {
-		startedAny := false
-		for _, r := range rigs {
-			crewToStart := getCrewToStart(r)
-			for _, crewName := range crewToStart {
-				sessionID := crewSessionName(r.Name, crewName)
-				if running, _ := t.HasSession(sessionID); running {
-					fmt.Printf("  %s %s/%s already running\n", style.Dim.Render("○"), r.Name, crewName)
+		return
+	}
+
+	for _, r := range rigs {
+		// Start Witness
+		witnessSession := fmt.Sprintf("gt-%s-witness", r.Name)
+		witnessRunning, _ := t.HasSession(witnessSession)
+		if witnessRunning {
+			fmt.Printf("  %s %s witness already running\n", style.Dim.Render("○"), r.Name)
+		} else {
+			created, err := ensureWitnessSession(r.Name, r)
+			if err != nil {
+				fmt.Printf("  %s %s witness failed: %v\n", style.Dim.Render("○"), r.Name, err)
+			} else if created {
+				fmt.Printf("  %s %s witness started\n", style.Bold.Render("✓"), r.Name)
+			}
+		}
+
+		// Start Refinery
+		refinerySession := fmt.Sprintf("gt-%s-refinery", r.Name)
+		refineryRunning, _ := t.HasSession(refinerySession)
+		if refineryRunning {
+			fmt.Printf("  %s %s refinery already running\n", style.Dim.Render("○"), r.Name)
+		} else {
+			created, err := ensureRefinerySession(r.Name, r)
+			if err != nil {
+				fmt.Printf("  %s %s refinery failed: %v\n", style.Dim.Render("○"), r.Name, err)
+			} else if created {
+				fmt.Printf("  %s %s refinery started\n", style.Bold.Render("✓"), r.Name)
+			}
+		}
+	}
+}
+
+// startConfiguredCrew starts crew members configured in rig settings.
+func startConfiguredCrew(t *tmux.Tmux, townRoot string) {
+	rigs, err := discoverAllRigs(townRoot)
+	if err != nil {
+		fmt.Printf("  %s Could not discover rigs: %v\n", style.Dim.Render("○"), err)
+		return
+	}
+
+	startedAny := false
+	for _, r := range rigs {
+		crewToStart := getCrewToStart(r)
+		for _, crewName := range crewToStart {
+			sessionID := crewSessionName(r.Name, crewName)
+			if running, _ := t.HasSession(sessionID); running {
+				fmt.Printf("  %s %s/%s already running\n", style.Dim.Render("○"), r.Name, crewName)
+			} else {
+				if err := startCrewMember(r.Name, crewName, townRoot); err != nil {
+					fmt.Printf("  %s %s/%s failed: %v\n", style.Dim.Render("○"), r.Name, crewName, err)
 				} else {
-					// Start the crew member using the existing runStartCrew logic
-					if err := startCrewMember(r.Name, crewName, townRoot); err != nil {
-						fmt.Printf("  %s %s/%s failed: %v\n", style.Dim.Render("○"), r.Name, crewName, err)
-					} else {
-						fmt.Printf("  %s %s/%s started\n", style.Bold.Render("✓"), r.Name, crewName)
-						startedAny = true
-					}
+					fmt.Printf("  %s %s/%s started\n", style.Bold.Render("✓"), r.Name, crewName)
+					startedAny = true
 				}
 			}
 		}
-		if !startedAny {
-			fmt.Printf("  %s No crew configured or all already running\n", style.Dim.Render("○"))
-		}
 	}
 
-	fmt.Println()
-	fmt.Printf("%s Gas Town is running\n", style.Bold.Render("✓"))
-	fmt.Println()
-	fmt.Printf("  Attach to Mayor:  %s\n", style.Dim.Render("gt mayor attach"))
-	fmt.Printf("  Attach to Deacon: %s\n", style.Dim.Render("gt deacon attach"))
-	fmt.Printf("  Check status:     %s\n", style.Dim.Render("gt status"))
-
-	return nil
+	if !startedAny {
+		fmt.Printf("  %s No crew configured or all already running\n", style.Dim.Render("○"))
+	}
 }
 
 // discoverAllRigs finds all rigs in the workspace.
@@ -728,7 +749,7 @@ func runStartCrew(cmd *cobra.Command, args []string) error {
 			// Wait for Claude to start, then prime
 			shells := []string{"bash", "zsh", "sh", "fish", "tcsh", "ksh"}
 			if err := t.WaitForCommand(sessionID, shells, 15*time.Second); err != nil {
-				fmt.Printf("Warning: Timeout waiting for Claude to start: %v\n", err)
+				style.PrintWarning("Timeout waiting for Claude to start: %v", err)
 			}
 			time.Sleep(500 * time.Millisecond)
 			if err := t.SendKeys(sessionID, "gt prime"); err != nil {
@@ -772,7 +793,7 @@ func runStartCrew(cmd *cobra.Command, args []string) error {
 		// Wait for Claude to start
 		shells := []string{"bash", "zsh", "sh", "fish", "tcsh", "ksh"}
 		if err := t.WaitForCommand(sessionID, shells, 15*time.Second); err != nil {
-			fmt.Printf("Warning: Timeout waiting for Claude to start: %v\n", err)
+			style.PrintWarning("Timeout waiting for Claude to start: %v", err)
 		}
 
 		// Give Claude time to initialize after process starts
