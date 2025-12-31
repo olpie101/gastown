@@ -56,16 +56,16 @@ Supported event types for refinery:
   queue_processed  - When refinery finishes processing queue
 
 Common options:
-  --actor    Who is emitting the event (e.g., gastown/witness)
+  --actor    Who is emitting the event (e.g., greenplace/witness)
   --rig      Which rig the event is about
   --message  Human-readable message
 
 Examples:
-  gt activity emit patrol_started --rig gastown --count 3
-  gt activity emit polecat_checked --rig gastown --polecat Toast --status working --issue gt-xyz
-  gt activity emit polecat_nudged --rig gastown --polecat Toast --reason "idle for 10 minutes"
-  gt activity emit escalation_sent --rig gastown --target Toast --to mayor --reason "unresponsive"
-  gt activity emit patrol_complete --rig gastown --count 3 --message "All polecats healthy"`,
+  gt activity emit patrol_started --rig greenplace --count 3
+  gt activity emit polecat_checked --rig greenplace --polecat Toast --status working --issue gp-xyz
+  gt activity emit polecat_nudged --rig greenplace --polecat Toast --reason "idle for 10 minutes"
+  gt activity emit escalation_sent --rig greenplace --target Toast --to mayor --reason "unresponsive"
+  gt activity emit patrol_complete --rig greenplace --count 3 --message "All polecats healthy"`,
 	Args: cobra.ExactArgs(1),
 	RunE: runActivityEmit,
 }

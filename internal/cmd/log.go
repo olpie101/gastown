@@ -46,7 +46,7 @@ Examples:
   gt log                     # Show last 20 events
   gt log -n 50               # Show last 50 events
   gt log --type spawn        # Show only spawn events
-  gt log --agent gastown/    # Show events for gastown rig
+  gt log --agent greenplace/    # Show events for gastown rig
   gt log --since 1h          # Show events from last hour
   gt log -f                  # Follow log (like tail -f)`,
 	RunE: runLog,
@@ -65,19 +65,19 @@ The exit code determines if this was a crash or expected exit:
   - Exit code non-zero: Crash (logged as 'crash')
 
 Examples:
-  gt log crash --agent gastown/Toast --session gt-gastown-Toast --exit-code 1`,
+  gt log crash --agent greenplace/Toast --session gt-greenplace-Toast --exit-code 1`,
 	RunE: runLogCrash,
 }
 
 func init() {
 	logCmd.Flags().IntVarP(&logTail, "tail", "n", 20, "Number of events to show")
 	logCmd.Flags().StringVarP(&logType, "type", "t", "", "Filter by event type (spawn,wake,nudge,handoff,done,crash,kill)")
-	logCmd.Flags().StringVarP(&logAgent, "agent", "a", "", "Filter by agent prefix (e.g., gastown/, gastown/crew/max)")
+	logCmd.Flags().StringVarP(&logAgent, "agent", "a", "", "Filter by agent prefix (e.g., gastown/, greenplace/crew/max)")
 	logCmd.Flags().StringVar(&logSince, "since", "", "Show events since duration (e.g., 1h, 30m, 24h)")
 	logCmd.Flags().BoolVarP(&logFollow, "follow", "f", false, "Follow log output (like tail -f)")
 
 	// crash subcommand flags
-	logCrashCmd.Flags().StringVar(&crashAgent, "agent", "", "Agent ID (e.g., gastown/Toast)")
+	logCrashCmd.Flags().StringVar(&crashAgent, "agent", "", "Agent ID (e.g., greenplace/Toast)")
 	logCrashCmd.Flags().StringVar(&crashSession, "session", "", "Tmux session name")
 	logCrashCmd.Flags().IntVar(&crashExitCode, "exit-code", -1, "Exit code from pane")
 	_ = logCrashCmd.MarkFlagRequired("agent")

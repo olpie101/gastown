@@ -89,8 +89,8 @@ Creates a swarm that coordinates multiple polecats working on tasks from
 a beads epic. All workers branch from the same base commit.
 
 Examples:
-  gt swarm create gastown --epic gt-abc --worker Toast --worker Nux
-  gt swarm create gastown --epic gt-abc --worker Toast --start`,
+  gt swarm create greenplace --epic gp-abc --worker Toast --worker Nux
+  gt swarm create greenplace --epic gp-abc --worker Toast --start`,
 	Args: cobra.ExactArgs(1),
 	RunE: runSwarmCreate,
 }
@@ -113,9 +113,9 @@ var swarmListCmd = &cobra.Command{
 
 Examples:
   gt swarm list
-  gt swarm list gastown
+  gt swarm list greenplace
   gt swarm list --status=active
-  gt swarm list gastown --status=landed`,
+  gt swarm list greenplace --status=landed`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runSwarmList,
 }
@@ -161,7 +161,7 @@ to an idle polecat in the rig.
 
 Examples:
   gt swarm dispatch gt-abc         # Dispatch next task from epic gt-abc
-  gt swarm dispatch gt-abc --rig gastown  # Dispatch in specific rig`,
+  gt swarm dispatch gt-abc --rig greenplace  # Dispatch in specific rig`,
 	Args: cobra.ExactArgs(1),
 	RunE: runSwarmDispatch,
 }

@@ -68,7 +68,7 @@ Creates a merge-request bead that will be processed by the Refinery.
 
 Auto-detection:
   - Branch: current git branch
-  - Issue: parsed from branch name (e.g., polecat/Nux/gt-xyz → gt-xyz)
+  - Issue: parsed from branch name (e.g., polecat/Nux/gp-xyz → gt-xyz)
   - Worker: parsed from branch name
   - Rig: detected from current directory
   - Target: automatically determined (see below)
@@ -91,7 +91,7 @@ Polecat auto-cleanup:
 
 Examples:
   gt mq submit                           # Auto-detect everything + auto-cleanup
-  gt mq submit --issue gt-abc            # Explicit issue
+  gt mq submit --issue gp-abc            # Explicit issue
   gt mq submit --epic gt-xyz             # Target integration branch explicitly
   gt mq submit --priority 0              # Override priority (P0)
   gt mq submit --no-cleanup              # Submit without auto-cleanup`,
@@ -107,8 +107,8 @@ Resets a failed MR so it can be processed again by the refinery.
 The MR must be in a failed state (open with an error).
 
 Examples:
-  gt mq retry gastown gt-mr-abc123
-  gt mq retry gastown gt-mr-abc123 --now`,
+  gt mq retry greenplace gp-mr-abc123
+  gt mq retry greenplace gp-mr-abc123 --now`,
 	Args: cobra.ExactArgs(2),
 	RunE: runMQRetry,
 }
@@ -122,16 +122,16 @@ Lists all pending merge requests waiting to be processed.
 
 Output format:
   ID          STATUS       PRIORITY  BRANCH                    WORKER  AGE
-  gt-mr-001   ready        P0        polecat/Nux/gt-xyz        Nux     5m
+  gt-mr-001   ready        P0        polecat/Nux/gp-xyz        Nux     5m
   gt-mr-002   in_progress  P1        polecat/Toast/gt-abc      Toast   12m
   gt-mr-003   blocked      P1        polecat/Capable/gt-def    Capable 8m
               (waiting on gt-mr-001)
 
 Examples:
-  gt mq list gastown
-  gt mq list gastown --ready
-  gt mq list gastown --status=open
-  gt mq list gastown --worker=Nux`,
+  gt mq list greenplace
+  gt mq list greenplace --ready
+  gt mq list greenplace --status=open
+  gt mq list greenplace --worker=Nux`,
 	Args: cobra.ExactArgs(1),
 	RunE: runMQList,
 }
@@ -145,8 +145,8 @@ This closes the MR with a 'rejected' status without merging.
 The source issue is NOT closed (work is not done).
 
 Examples:
-  gt mq reject gastown polecat/Nux/gt-xyz --reason "Does not meet requirements"
-  gt mq reject gastown mr-Nux-12345 --reason "Superseded by other work" --notify`,
+  gt mq reject greenplace polecat/Nux/gp-xyz --reason "Does not meet requirements"
+  gt mq reject greenplace mr-Nux-12345 --reason "Superseded by other work" --notify`,
 	Args: cobra.ExactArgs(2),
 	RunE: runMQReject,
 }
@@ -160,7 +160,7 @@ Shows all MR fields, current status with timestamps, dependencies,
 blockers, and processing history.
 
 Example:
-  gt mq status gt-mr-abc123`,
+  gt mq status gp-mr-abc123`,
 	Args: cobra.ExactArgs(1),
 	RunE: runMqStatus,
 }

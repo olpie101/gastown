@@ -41,8 +41,8 @@ Shows a unified timeline of work performed by an actor including:
   - Activity feed events
 
 Examples:
-  gt audit --actor=gastown/crew/joe       # Show all work by joe
-  gt audit --actor=gastown/polecats/toast # Show polecat toast's work
+  gt audit --actor=greenplace/crew/joe       # Show all work by joe
+  gt audit --actor=greenplace/polecats/toast # Show polecat toast's work
   gt audit --actor=mayor                  # Show mayor's activity
   gt audit --since=24h                    # Show all activity in last 24h
   gt audit --actor=joe --since=1h         # Combined filters
@@ -167,7 +167,7 @@ func collectGitCommits(townRoot, actor string, since time.Time) ([]AuditEntry, e
 
 	if actor != "" {
 		// Try to match actor in author name
-		// Actor format might be "gastown/crew/joe" - extract "joe" as the author name
+		// Actor format might be "greenplace/crew/joe" - extract "joe" as the author name
 		authorName := extractAuthorName(actor)
 		args = append(args, "--author="+authorName)
 	}
@@ -221,7 +221,7 @@ func collectGitCommits(townRoot, actor string, since time.Time) ([]AuditEntry, e
 
 // extractAuthorName extracts the likely git author name from an actor address.
 func extractAuthorName(actor string) string {
-	// Actor format: "gastown/crew/joe" -> "joe"
+	// Actor format: "greenplace/crew/joe" -> "joe"
 	// Or: "mayor" -> "mayor"
 	parts := strings.Split(actor, "/")
 	if len(parts) > 0 {

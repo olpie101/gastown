@@ -20,7 +20,7 @@ type Templates struct {
 // RoleData contains information for rendering role contexts.
 type RoleData struct {
 	Role        string   // mayor, witness, refinery, polecat, crew, deacon
-	RigName     string   // e.g., "gastown"
+	RigName     string   // e.g., "greenplace"
 	TownRoot    string   // e.g., "/Users/steve/ai"
 	WorkDir     string   // current working directory
 	Polecat     string   // polecat name (for polecat role)

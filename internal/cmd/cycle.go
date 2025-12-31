@@ -30,9 +30,9 @@ var cycleCmd = &cobra.Command{
 
 Session groups:
 - Town sessions: Mayor ↔ Deacon
-- Crew sessions: All crew members in the same rig (e.g., gastown/crew/max ↔ gastown/crew/joe)
+- Crew sessions: All crew members in the same rig (e.g., greenplace/crew/max ↔ greenplace/crew/joe)
 - Rig infra sessions: Witness ↔ Refinery (per rig)
-- Polecat sessions: All polecats in the same rig (e.g., gastown/Toast ↔ gastown/Nux)
+- Polecat sessions: All polecats in the same rig (e.g., greenplace/Toast ↔ greenplace/Nux)
 
 The appropriate cycling is detected automatically from the session name.`,
 }

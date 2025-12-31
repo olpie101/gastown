@@ -60,7 +60,7 @@ type OverseerInfo struct {
 // AgentRuntime represents the runtime state of an agent.
 type AgentRuntime struct {
 	Name         string `json:"name"`                    // Display name (e.g., "mayor", "witness")
-	Address      string `json:"address"`                 // Full address (e.g., "gastown/witness")
+	Address      string `json:"address"`                 // Full address (e.g., "greenplace/witness")
 	Session      string `json:"session"`                 // tmux session name
 	Role         string `json:"role"`                    // Role type
 	Running      bool   `json:"running"`                 // Is tmux session running?
@@ -95,7 +95,7 @@ type MQSummary struct {
 
 // AgentHookInfo represents an agent's hook (pinned work) status.
 type AgentHookInfo struct {
-	Agent    string `json:"agent"`              // Agent address (e.g., "gastown/toast", "gastown/witness")
+	Agent    string `json:"agent"`              // Agent address (e.g., "greenplace/toast", "greenplace/witness")
 	Role     string `json:"role"`               // Role type (polecat, crew, witness, refinery)
 	HasWork  bool   `json:"has_work"`           // Whether agent has pinned work
 	Molecule string `json:"molecule,omitempty"` // Attached molecule ID

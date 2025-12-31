@@ -50,13 +50,13 @@ independent tasks, a swarm lets you:
 
 ```bash
 # Create swarm from existing epic
-gt swarm create gastown --epic gt-abc --worker Toast --worker Nux
+gt swarm create greenplace --epic gp-abc --worker Toast --worker Nux
 
 # Create and start immediately
-gt swarm create gastown --epic gt-abc --worker Toast --start
+gt swarm create greenplace --epic gp-abc --worker Toast --start
 
 # Specify target branch (defaults to main)
-gt swarm create gastown --epic gt-abc --worker Toast --target develop
+gt swarm create greenplace --epic gp-abc --worker Toast --target develop
 ```
 
 The epic should already exist in beads with child tasks. The swarm will track
@@ -66,7 +66,7 @@ which tasks are ready, in-progress, and complete.
 
 ```bash
 # Start a previously created swarm
-gt swarm start gt-abc
+gt swarm start gp-abc
 ```
 
 This transitions the swarm from `created` to `active` and begins dispatching
@@ -76,10 +76,10 @@ tasks to workers.
 
 ```bash
 # Human-readable status
-gt swarm status gt-abc
+gt swarm status gp-abc
 
 # JSON output
-gt swarm status gt-abc --json
+gt swarm status gp-abc --json
 ```
 
 Shows:
@@ -96,11 +96,11 @@ Shows:
 gt swarm list
 
 # Swarms in specific rig
-gt swarm list gastown
+gt swarm list greenplace
 
 # Filter by status
 gt swarm list --status=active
-gt swarm list gastown --status=landed
+gt swarm list greenplace --status=landed
 
 # JSON output
 gt swarm list --json
@@ -110,10 +110,10 @@ gt swarm list --json
 
 ```bash
 # Auto-dispatch next ready task to idle polecat
-gt swarm dispatch gt-abc
+gt swarm dispatch gp-abc
 
 # Dispatch in specific rig
-gt swarm dispatch gt-abc --rig gastown
+gt swarm dispatch gp-abc --rig greenplace
 ```
 
 Finds the first unassigned ready task and assigns it to an available polecat.
@@ -123,7 +123,7 @@ Uses `gt sling` internally.
 
 ```bash
 # Manually land completed swarm
-gt swarm land gt-abc
+gt swarm land gp-abc
 ```
 
 This:
@@ -139,7 +139,7 @@ This:
 ### Cancel a Swarm
 
 ```bash
-gt swarm cancel gt-abc
+gt swarm cancel gp-abc
 ```
 
 Marks the swarm as cancelled. Does not automatically stop sessions or clean up
@@ -197,22 +197,22 @@ If code is at risk, landing blocks and notifies Mayor.
 
 ```bash
 # 1. Create epic with tasks in beads
-bd create --type=epic --title="Add authentication" --id gt-auth
-bd create --title="Add login form" --parent gt-auth
-bd create --title="Add session management" --parent gt-auth
-bd create --title="Add logout flow" --parent gt-auth
+bd create --type=epic --title="Add authentication" --id gp-auth
+bd create --title="Add login form" --parent gp-auth
+bd create --title="Add session management" --parent gp-auth
+bd create --title="Add logout flow" --parent gp-auth
 
 # 2. Create swarm
-gt swarm create gastown --epic gt-auth --worker Toast --worker Nux --start
+gt swarm create greenplace --epic gp-auth --worker Toast --worker Nux --start
 
 # 3. Monitor progress
-gt swarm status gt-auth
+gt swarm status gp-auth
 
 # 4. Dispatch more as tasks complete
-gt swarm dispatch gt-auth
+gt swarm dispatch gp-auth
 
 # 5. Land when complete
-gt swarm land gt-auth
+gt swarm land gp-auth
 ```
 
 ## Troubleshooting

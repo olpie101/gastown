@@ -31,7 +31,7 @@ Gas Town routes beads commands based on issue ID prefix. You don't need to think
 about which database to use - just use the issue ID.
 
 ```bash
-bd show gt-xyz    # Routes to gastown rig's beads
+bd show gp-xyz    # Routes to greenplace rig's beads
 bd show hq-abc    # Routes to town-level beads
 bd show wyv-123   # Routes to wyvern rig's beads
 ```
@@ -42,7 +42,7 @@ prefix maps to its beads location (the mayor's clone in that rig).
 | Prefix | Routes To | Purpose |
 |--------|-----------|---------|
 | `hq-*` | `~/gt/.beads/` | Mayor mail, cross-rig coordination |
-| `gt-*` | `~/gt/gastown/mayor/rig/.beads/` | Gastown project issues |
+| `gp-*` | `~/gt/greenplace/mayor/rig/.beads/` | Greenplace project issues |
 | `wyv-*` | `~/gt/wyvern/mayor/rig/.beads/` | Wyvern project issues |
 
 Debug routing: `BD_DEBUG_ROUTING=1 bd show <id>`

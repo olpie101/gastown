@@ -272,7 +272,7 @@ Digests feed into the activity feed for observability:
 ```json
 {
   "type": "digest",
-  "agent": "gastown/witness",
+  "agent": "greenplace/witness",
   "timestamp": "2025-12-30T10:00:00Z",
   "summary": "Patrol cycle 47 complete",
   "metrics": {

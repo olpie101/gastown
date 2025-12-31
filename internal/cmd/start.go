@@ -89,12 +89,12 @@ var startCrewCmd = &cobra.Command{
 This is a convenience command that combines 'gt crew add' and 'gt crew at --detached'.
 The crew session starts in the background with Claude running and ready.
 
-The name can include the rig in slash format (e.g., gastown/joe).
+The name can include the rig in slash format (e.g., greenplace/joe).
 If not specified, the rig is inferred from the current directory.
 
 Examples:
   gt start crew joe                    # Start joe in current rig
-  gt start crew gastown/joe            # Start joe in gastown rig
+  gt start crew greenplace/joe            # Start joe in gastown rig
   gt start crew joe --rig beads        # Start joe in beads rig`,
 	Args: cobra.ExactArgs(1),
 	RunE: runStartCrew,
@@ -660,7 +660,7 @@ func cleanupPolecats(townRoot string) {
 func runStartCrew(cmd *cobra.Command, args []string) error {
 	name := args[0]
 
-	// Parse rig/name format (e.g., "gastown/joe" -> rig=gastown, name=joe)
+	// Parse rig/name format (e.g., "greenplace/joe" -> rig=gastown, name=joe)
 	rigName := startCrewRig
 	if parsedRig, crewName, ok := parseRigSlashName(name); ok {
 		if rigName == "" {

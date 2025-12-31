@@ -23,7 +23,7 @@ Full work unit reference (HOP protocol):
 
 ```
 hop://entity/chain/rig/issue-id
-hop://steve@example.com/main-town/gastown/gt-xyz
+hop://steve@example.com/main-town/greenplace/gp-xyz
 ```
 
 Cross-repo reference (same platform):
@@ -36,9 +36,9 @@ beads://github/acme/backend/ac-123
 Within a workspace, short forms are preferred:
 
 ```
-gt-xyz           # Local (prefix routes via routes.jsonl)
-gastown/gt-xyz   # Different rig, same chain
-./gt-xyz         # Explicit current-rig ref
+gp-xyz             # Local (prefix routes via routes.jsonl)
+greenplace/gp-xyz  # Different rig, same chain
+./gp-xyz           # Explicit current-rig ref
 ```
 
 See `~/gt/docs/hop/GRAPH-ARCHITECTURE.md` for full URI specification.
@@ -80,7 +80,7 @@ Distribute work across workspaces:
 {
   "type": "delegation",
   "parent": "hop://acme.com/projects/proj-123",
-  "child": "hop://alice@example.com/town/gastown/gt-xyz",
+  "child": "hop://alice@example.com/town/greenplace/gp-xyz",
   "terms": { "portion": "backend", "deadline": "2025-02-01" }
 }
 ```
@@ -94,17 +94,17 @@ complete BD_ACTOR format convention.
 
 ```bash
 # Set per agent session
-GIT_AUTHOR_NAME="gastown/crew/joe"
+GIT_AUTHOR_NAME="greenplace/crew/joe"
 GIT_AUTHOR_EMAIL="steve@example.com"  # Workspace owner
 ```
 
-Result: `abc123 Fix bug (gastown/crew/joe <steve@example.com>)`
+Result: `abc123 Fix bug (greenplace/crew/joe <steve@example.com>)`
 
 ### Beads Operations
 
 ```bash
-BD_ACTOR="gastown/crew/joe"  # Set in agent environment
-bd create --title="Task"     # Actor auto-populated
+BD_ACTOR="greenplace/crew/joe"  # Set in agent environment
+bd create --title="Task"        # Actor auto-populated
 ```
 
 ### Event Logging
@@ -115,8 +115,8 @@ All events include actor:
 {
   "ts": "2025-01-15T10:30:00Z",
   "type": "sling",
-  "actor": "gastown/crew/joe",
-  "payload": { "bead": "gt-xyz", "target": "gastown/polecats/Toast" }
+  "actor": "greenplace/crew/joe",
+  "payload": { "bead": "gp-xyz", "target": "greenplace/polecats/Toast" }
 }
 ```
 
@@ -131,7 +131,7 @@ Each workspace has identity metadata:
 {
   "owner": "steve@example.com",
   "name": "main-town",
-  "public_name": "steve-gastown"
+  "public_name": "steve-greenplace"
 }
 ```
 
@@ -161,7 +161,7 @@ bd list --org=acme.com
 bd list --project=proj-123 --include-delegated
 
 # Agent's full history
-bd audit --actor=gastown/crew/joe
+bd audit --actor=greenplace/crew/joe
 ```
 
 ## Implementation Status

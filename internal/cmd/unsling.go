@@ -23,8 +23,8 @@ another agent's hook.
 Examples:
   gt unsling                        # Clear my hook (whatever's there)
   gt unsling gt-abc                 # Only unsling if gt-abc is hooked
-  gt unsling gastown/joe            # Clear joe's hook
-  gt unsling gt-abc gastown/joe     # Unsling gt-abc from joe
+  gt unsling greenplace/joe            # Clear joe's hook
+  gt unsling gt-abc greenplace/joe     # Unsling gt-abc from joe
 
 The bead's status changes from 'pinned' back to 'open'.
 
@@ -154,7 +154,7 @@ func runUnsling(cmd *cobra.Command, args []string) error {
 // isAgentTarget checks if a string looks like an agent target rather than a bead ID.
 // Agent targets contain "/" or are known role names.
 func isAgentTarget(s string) bool {
-	// Contains "/" means it's a path like "gastown/joe"
+	// Contains "/" means it's a path like "greenplace/joe"
 	for _, c := range s {
 		if c == '/' {
 			return true

@@ -205,7 +205,7 @@ attached_at: <timestamp>
 Examples:
 ```
 POLECAT_DONE nux
-MERGE_READY gastown/nux
+MERGE_READY greenplace/nux
 HELP: Polecat stuck on test failures
 🤝 HANDOFF: Schema work in progress
 ```
@@ -222,9 +222,9 @@ Format: `<rig>/<role>` or `<rig>/<type>/<name>`
 
 Examples:
 ```
-gastown/witness       # Witness for gastown rig
-beads/refinery        # Refinery for beads rig
-gastown/polecats/nux  # Specific polecat
+greenplace/witness       # Witness for greenplace rig
+beads/refinery           # Refinery for beads rig
+greenplace/polecats/nux  # Specific polecat
 mayor/                # Town-level Mayor
 deacon/               # Town-level Deacon
 ```
@@ -314,8 +314,8 @@ Witness-N ──┘
 gt mail send <addr> -s "Subject" -m "Body"
 
 # With structured body
-gt mail send gastown/witness -s "MERGE_READY nux" -m "Branch: feature-xyz
-Issue: gt-abc
+gt mail send greenplace/witness -s "MERGE_READY nux" -m "Branch: feature-xyz
+Issue: gp-abc
 Polecat: nux
 Verified: clean"
 ```

@@ -29,9 +29,9 @@ The nudge/peek pair provides the canonical interface for agent sessions:
   gt peek  - read output FROM a session (capture-pane wrapper)
 
 Examples:
-  gt peek gastown/furiosa         # Last 100 lines (default)
-  gt peek gastown/furiosa 50      # Last 50 lines
-  gt peek gastown/furiosa -n 200  # Last 200 lines`,
+  gt peek greenplace/furiosa         # Last 100 lines (default)
+  gt peek greenplace/furiosa 50      # Last 50 lines
+  gt peek greenplace/furiosa -n 200  # Last 200 lines`,
 	Args: cobra.RangeArgs(1, 2),
 	RunE: runPeek,
 }

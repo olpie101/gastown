@@ -57,7 +57,7 @@ The workspace is created at <rig>/crew/<name>/ with:
 
 Examples:
   gt crew add dave                    # Create in current rig
-  gt crew add emma --rig gastown      # Create in specific rig
+  gt crew add emma --rig greenplace      # Create in specific rig
   gt crew add fred --branch           # Create with feature branch`,
 	Args: cobra.ExactArgs(1),
 	RunE: runCrewAdd,
@@ -72,7 +72,7 @@ Shows git branch, session state, and git status for each workspace.
 
 Examples:
   gt crew list                    # List in current rig
-  gt crew list --rig gastown      # List in specific rig
+  gt crew list --rig greenplace      # List in specific rig
   gt crew list --json             # JSON output`,
 	RunE: runCrewList,
 }
@@ -244,7 +244,7 @@ var crewStartCmd = &cobra.Command{
 This is an alias for 'gt start crew'. It combines 'gt crew add' and 'gt crew at --detached'.
 The crew session starts in the background with Claude running and ready.
 
-The name can include the rig in slash format (e.g., gastown/joe).
+The name can include the rig in slash format (e.g., greenplace/joe).
 If not specified, the rig is inferred from the current directory.
 
 Role Discovery:
@@ -254,7 +254,7 @@ Role Discovery:
 
 Examples:
   gt crew start joe                         # Start joe in current rig
-  gt crew start gastown/joe                 # Start joe in gastown rig
+  gt crew start greenplace/joe                 # Start joe in gastown rig
   gt crew start beads/grip beads/fang       # Start multiple crew members
   gt crew start joe --rig beads             # Start joe in beads rig
   gt crew start                             # Auto-detect from cwd`,

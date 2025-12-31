@@ -120,7 +120,7 @@ This command is a low-level primitive for file-based injection or
 cases where you need raw tmux send-keys behavior.
 
 Examples:
-  gt nudge gastown/furiosa "Check your mail"     # Preferred
+  gt nudge greenplace/furiosa "Check your mail"     # Preferred
   gt session inject wyvern/Toast -f prompt.txt   # For file injection`,
 	Args: cobra.ExactArgs(1),
 	RunE: runSessionInject,
@@ -160,7 +160,7 @@ Use this for manual health checks or debugging session issues.
 
 Examples:
   gt session check              # Check all rigs
-  gt session check gastown      # Check specific rig`,
+  gt session check greenplace      # Check specific rig`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runSessionCheck,
 }

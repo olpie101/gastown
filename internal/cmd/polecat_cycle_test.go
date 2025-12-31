@@ -13,15 +13,15 @@ func TestParsePolecatSessionName(t *testing.T) {
 		// Valid polecat sessions
 		{
 			name:        "simple polecat",
-			sessionName: "gt-gastown-Toast",
-			wantRig:     "gastown",
+			sessionName: "gt-greenplace-Toast",
+			wantRig:     "greenplace",
 			wantPolecat: "Toast",
 			wantOk:      true,
 		},
 		{
 			name:        "another polecat",
-			sessionName: "gt-gastown-Nux",
-			wantRig:     "gastown",
+			sessionName: "gt-greenplace-Nux",
+			wantRig:     "greenplace",
 			wantPolecat: "Nux",
 			wantOk:      true,
 		},
@@ -34,8 +34,8 @@ func TestParsePolecatSessionName(t *testing.T) {
 		},
 		{
 			name:        "polecat with hyphen in name",
-			sessionName: "gt-gastown-Max-01",
-			wantRig:     "gastown",
+			sessionName: "gt-greenplace-Max-01",
+			wantRig:     "greenplace",
 			wantPolecat: "Max-01",
 			wantOk:      true,
 		},
@@ -43,21 +43,21 @@ func TestParsePolecatSessionName(t *testing.T) {
 		// Not polecat sessions (should return false)
 		{
 			name:        "crew session",
-			sessionName: "gt-gastown-crew-jack",
+			sessionName: "gt-greenplace-crew-jack",
 			wantRig:     "",
 			wantPolecat: "",
 			wantOk:      false,
 		},
 		{
 			name:        "witness session",
-			sessionName: "gt-gastown-witness",
+			sessionName: "gt-greenplace-witness",
 			wantRig:     "",
 			wantPolecat: "",
 			wantOk:      false,
 		},
 		{
 			name:        "refinery session",
-			sessionName: "gt-gastown-refinery",
+			sessionName: "gt-greenplace-refinery",
 			wantRig:     "",
 			wantPolecat: "",
 			wantOk:      false,
@@ -99,7 +99,7 @@ func TestParsePolecatSessionName(t *testing.T) {
 		},
 		{
 			name:        "no name after rig",
-			sessionName: "gt-gastown-",
+			sessionName: "gt-greenplace-",
 			wantRig:     "",
 			wantPolecat: "",
 			wantOk:      false,

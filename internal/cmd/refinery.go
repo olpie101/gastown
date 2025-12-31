@@ -42,8 +42,8 @@ and merges them to the appropriate target branches.
 If rig is not specified, infers it from the current directory.
 
 Examples:
-  gt refinery start gastown
-  gt refinery start gastown --foreground
+  gt refinery start greenplace
+  gt refinery start greenplace --foreground
   gt refinery start              # infer rig from cwd`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runRefineryStart,
@@ -93,7 +93,7 @@ or manual intervention.
 If rig is not specified, infers it from the current directory.
 
 Examples:
-  gt refinery attach gastown
+  gt refinery attach greenplace
   gt refinery attach          # infer rig from cwd`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runRefineryAttach,
@@ -108,7 +108,7 @@ Stops the current session (if running) and starts a fresh one.
 If rig is not specified, infers it from the current directory.
 
 Examples:
-  gt refinery restart gastown
+  gt refinery restart greenplace
   gt refinery restart          # infer rig from cwd`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runRefineryRestart,

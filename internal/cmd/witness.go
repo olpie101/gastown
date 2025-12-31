@@ -44,8 +44,8 @@ Launches the monitoring agent which watches polecats for stuck or idle
 states and takes action to keep work flowing.
 
 Examples:
-  gt witness start gastown
-  gt witness start gastown --foreground`,
+  gt witness start greenplace
+  gt witness start greenplace --foreground`,
 	Args: cobra.ExactArgs(1),
 	RunE: runWitnessStart,
 }
@@ -83,7 +83,7 @@ If the witness is not running, this will start it first.
 If rig is not specified, infers it from the current directory.
 
 Examples:
-  gt witness attach gastown
+  gt witness attach greenplace
   gt witness attach          # infer rig from cwd`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runWitnessAttach,
@@ -97,7 +97,7 @@ var witnessRestartCmd = &cobra.Command{
 Stops the current session (if running) and starts a fresh one.
 
 Examples:
-  gt witness restart gastown`,
+  gt witness restart greenplace`,
 	Args: cobra.ExactArgs(1),
 	RunE: runWitnessRestart,
 }

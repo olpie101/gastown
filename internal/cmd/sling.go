@@ -35,18 +35,18 @@ This is THE command for assigning work in Gas Town. It handles:
 Target Resolution:
   gt sling gt-abc                       # Self (current agent)
   gt sling gt-abc crew                  # Crew worker in current rig
-  gt sling gt-abc gastown               # Auto-spawn polecat in rig
-  gt sling gt-abc gastown/Toast         # Specific polecat
+  gt sling gp-abc greenplace               # Auto-spawn polecat in rig
+  gt sling gt-abc greenplace/Toast         # Specific polecat
   gt sling gt-abc mayor                 # Mayor
   gt sling gt-abc deacon/dogs           # Auto-dispatch to idle dog
   gt sling gt-abc deacon/dogs/alpha     # Specific dog
 
 Spawning Options (when target is a rig):
-  gt sling gt-abc gastown --molecule mol-review  # Use specific workflow
-  gt sling gt-abc gastown --create               # Create polecat if missing
-  gt sling gt-abc gastown --naked                # No-tmux (manual start)
-  gt sling gt-abc gastown --force                # Ignore unread mail
-  gt sling gt-abc gastown --account work         # Use specific Claude account
+  gt sling gp-abc greenplace --molecule mol-review  # Use specific workflow
+  gt sling gp-abc greenplace --create               # Create polecat if missing
+  gt sling gp-abc greenplace --naked                # No-tmux (manual start)
+  gt sling gp-abc greenplace --force                # Ignore unread mail
+  gt sling gp-abc greenplace --account work         # Use specific Claude account
 
 Natural Language Args:
   gt sling gt-abc --args "patch release"
@@ -64,9 +64,9 @@ Formula-on-Bead (--on flag):
   gt sling shiny --on gt-abc crew       # Apply formula, sling to crew
 
 Quality Levels (shorthand for polecat workflows):
-  gt sling gt-abc gastown --quality=basic   # mol-polecat-basic (trivial fixes)
-  gt sling gt-abc gastown --quality=shiny   # mol-polecat-shiny (standard)
-  gt sling gt-abc gastown --quality=chrome  # mol-polecat-chrome (max rigor)
+  gt sling gp-abc greenplace --quality=basic   # mol-polecat-basic (trivial fixes)
+  gt sling gp-abc greenplace --quality=shiny   # mol-polecat-shiny (standard)
+  gt sling gp-abc greenplace --quality=chrome  # mol-polecat-chrome (max rigor)
 
 Compare:
   gt hook <bead>      # Just attach (no action)
@@ -126,7 +126,7 @@ func runSling(cmd *cobra.Command, args []string) error {
 	}
 
 	// --quality is shorthand for formula-on-bead with polecat workflow
-	// Convert: gt sling gt-abc gastown --quality=shiny
+	// Convert: gt sling gp-abc greenplace --quality=shiny
 	// To:      gt sling mol-polecat-shiny --on gt-abc gastown
 	if slingQuality != "" {
 		qualityFormula, err := qualityToFormula(slingQuality)
@@ -793,10 +793,10 @@ func runSlingFormula(args []string) error {
 func updateAgentHookBead(agentID, beadID string) {
 	// Convert agent ID to agent bead ID
 	// Format examples (canonical: prefix-rig-role-name):
-	//   gastown/crew/max -> gt-gastown-crew-max
-	//   gastown/polecats/Toast -> gt-gastown-polecat-Toast
+	//   greenplace/crew/max -> gt-greenplace-crew-max
+	//   greenplace/polecats/Toast -> gt-greenplace-polecat-Toast
 	//   mayor -> gt-mayor
-	//   gastown/witness -> gt-gastown-witness
+	//   greenplace/witness -> gt-greenplace-witness
 	agentBeadID := agentIDToBeadID(agentID)
 	if agentBeadID == "" {
 		return

@@ -51,9 +51,9 @@ all currently active polecats with their states:
   - stuck: Needs assistance
 
 Examples:
-  gt polecat list gastown
+  gt polecat list greenplace
   gt polecat list --all
-  gt polecat list gastown --json`,
+  gt polecat list greenplace --json`,
 	RunE: runPolecatList,
 }
 
@@ -66,7 +66,7 @@ Creates a polecat directory, clones the rig repo, creates a work branch,
 and initializes state.
 
 Example:
-  gt polecat add gastown Toast`,
+  gt polecat add greenplace Toast`,
 	Args: cobra.ExactArgs(2),
 	RunE: runPolecatAdd,
 }
@@ -81,10 +81,10 @@ Warns if uncommitted changes exist.
 Use --force to bypass checks.
 
 Examples:
-  gt polecat remove gastown/Toast
-  gt polecat remove gastown/Toast gastown/Furiosa
-  gt polecat remove gastown --all
-  gt polecat remove gastown --all --force`,
+  gt polecat remove greenplace/Toast
+  gt polecat remove greenplace/Toast greenplace/Furiosa
+  gt polecat remove greenplace --all
+  gt polecat remove greenplace --all --force`,
 	Args: cobra.MinimumNArgs(1),
 	RunE: runPolecatRemove,
 }
@@ -100,7 +100,7 @@ via 'gt sling'. This command is kept for backward compatibility.
 Transitions: done → working
 
 Example:
-  gt polecat wake gastown/Toast`,
+  gt polecat wake greenplace/Toast`,
 	Args: cobra.ExactArgs(1),
 	RunE: runPolecatWake,
 }
@@ -117,7 +117,7 @@ backward compatibility.
 Transitions: working → done
 
 Example:
-  gt polecat sleep gastown/Toast`,
+  gt polecat sleep greenplace/Toast`,
 	Args: cobra.ExactArgs(1),
 	RunE: runPolecatSleep,
 }
@@ -133,8 +133,8 @@ Clears the assigned issue.
 Fails if session is running (stop first).
 
 Example:
-  gt polecat done gastown/Toast
-  gt polecat finish gastown/Toast`,
+  gt polecat done greenplace/Toast
+  gt polecat finish greenplace/Toast`,
 	Args: cobra.ExactArgs(1),
 	RunE: runPolecatDone,
 }
@@ -150,7 +150,7 @@ Use when polecat is stuck in an unexpected state.
 Fails if session is running (stop first).
 
 Example:
-  gt polecat reset gastown/Toast`,
+  gt polecat reset greenplace/Toast`,
 	Args: cobra.ExactArgs(1),
 	RunE: runPolecatReset,
 }
@@ -167,9 +167,9 @@ Use --all to sync all polecats in a rig.
 Use --from-main to only pull (no push).
 
 Examples:
-  gt polecat sync gastown/Toast
-  gt polecat sync gastown --all
-  gt polecat sync gastown/Toast --from-main`,
+  gt polecat sync greenplace/Toast
+  gt polecat sync greenplace --all
+  gt polecat sync greenplace/Toast --from-main`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runPolecatSync,
 }
@@ -187,8 +187,8 @@ Displays comprehensive information including:
   - Last activity time
 
 Examples:
-  gt polecat status gastown/Toast
-  gt polecat status gastown/Toast --json`,
+  gt polecat status greenplace/Toast
+  gt polecat status greenplace/Toast --json`,
 	Args: cobra.ExactArgs(1),
 	RunE: runPolecatStatus,
 }
@@ -217,8 +217,8 @@ This command removes orphaned branches:
   - Old timestamped branches (keeps only the current one per polecat)
 
 Examples:
-  gt polecat gc gastown
-  gt polecat gc gastown --dry-run`,
+  gt polecat gc greenplace
+  gt polecat gc greenplace --dry-run`,
 	Args: cobra.ExactArgs(1),
 	RunE: runPolecatGC,
 }
@@ -237,10 +237,10 @@ This is the nuclear option for post-merge cleanup. It:
 Use this after the Refinery has merged the polecat's work.
 
 Examples:
-  gt polecat nuke gastown/Toast
-  gt polecat nuke gastown/Toast gastown/Furiosa
-  gt polecat nuke gastown --all
-  gt polecat nuke gastown --all --dry-run`,
+  gt polecat nuke greenplace/Toast
+  gt polecat nuke greenplace/Toast greenplace/Furiosa
+  gt polecat nuke greenplace --all
+  gt polecat nuke greenplace --all --dry-run`,
 	Args: cobra.MinimumNArgs(1),
 	RunE: runPolecatNuke,
 }
@@ -259,8 +259,8 @@ Checks:
   - Stashes: stashed changes
 
 Examples:
-  gt polecat git-state gastown/Toast
-  gt polecat git-state gastown/Toast --json`,
+  gt polecat git-state greenplace/Toast
+  gt polecat git-state greenplace/Toast --json`,
 	Args: cobra.ExactArgs(1),
 	RunE: runPolecatGitState,
 }
@@ -465,7 +465,7 @@ func runPolecatRemove(cmd *cobra.Command, args []string) error {
 		rigName := args[0]
 		// Check if it looks like rig/polecat format
 		if _, _, err := parseAddress(rigName); err == nil {
-			return fmt.Errorf("with --all, provide just the rig name (e.g., 'gt polecat remove gastown --all')")
+			return fmt.Errorf("with --all, provide just the rig name (e.g., 'gt polecat remove greenplace --all')")
 		}
 
 		mgr, r, err := getPolecatManager(rigName)
@@ -1150,7 +1150,7 @@ func runPolecatNuke(cmd *cobra.Command, args []string) error {
 		rigName := args[0]
 		// Check if it looks like rig/polecat format
 		if _, _, err := parseAddress(rigName); err == nil {
-			return fmt.Errorf("with --all, provide just the rig name (e.g., 'gt polecat nuke gastown --all')")
+			return fmt.Errorf("with --all, provide just the rig name (e.g., 'gt polecat nuke greenplace --all')")
 		}
 
 		mgr, r, err := getPolecatManager(rigName)

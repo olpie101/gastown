@@ -106,7 +106,7 @@ Polecats are NOT started by this command - they are spawned
 on demand when work is assigned.
 
 Examples:
-  gt rig boot gastown`,
+  gt rig boot greenplace`,
 	Args: cobra.ExactArgs(1),
 	RunE: runRigBoot,
 }
@@ -120,7 +120,7 @@ This is equivalent to 'gt rig shutdown' followed by 'gt rig boot'.
 Useful after polecats complete work and land their changes.
 
 Examples:
-  gt rig reboot gastown
+  gt rig reboot greenplace
   gt rig reboot beads --force`,
 	Args: cobra.ExactArgs(1),
 	RunE: runRigReboot,
@@ -145,9 +145,9 @@ Use --force to skip graceful shutdown and kill immediately.
 Use --nuclear to bypass ALL safety checks (will lose work!).
 
 Examples:
-  gt rig shutdown gastown
-  gt rig shutdown gastown --force
-  gt rig shutdown gastown --nuclear  # DANGER: loses uncommitted work`,
+  gt rig shutdown greenplace
+  gt rig shutdown greenplace --force
+  gt rig shutdown greenplace --nuclear  # DANGER: loses uncommitted work`,
 	Args: cobra.ExactArgs(1),
 	RunE: runRigShutdown,
 }

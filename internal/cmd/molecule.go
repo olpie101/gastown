@@ -135,9 +135,9 @@ Output includes:
 - Next action hint
 
 Examples:
-  gt mol status                    # Show current agent's hook
-  gt mol status gastown/nux        # Show specific polecat's hook
-  gt mol status gastown/witness    # Show witness's hook`,
+  gt mol status                       # Show current agent's hook
+  gt mol status greenplace/nux        # Show specific polecat's hook
+  gt mol status greenplace/witness    # Show witness's hook`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runMoleculeStatus,
 }
@@ -159,10 +159,10 @@ Output includes:
 - Current step that should be worked on next
 
 Examples:
-  gt molecule current              # Current agent's work
-  gt molecule current gastown/furiosa
+  gt molecule current                 # Current agent's work
+  gt molecule current greenplace/furiosa
   gt molecule current deacon
-  gt mol current gastown/witness`,
+  gt mol current greenplace/witness`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runMoleculeCurrent,
 }

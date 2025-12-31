@@ -33,8 +33,8 @@ Special targets:
   deacon    Maps to the Deacon session (gt-deacon)
 
 Examples:
-  gt nudge gastown/furiosa "Check your mail and start working"
-  gt nudge gastown/alpha "What's your status?"
+  gt nudge greenplace/furiosa "Check your mail and start working"
+  gt nudge greenplace/alpha "What's your status?"
   gt nudge deacon session-started`,
 	Args: cobra.ExactArgs(2),
 	RunE: runNudge,

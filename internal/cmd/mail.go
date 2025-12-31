@@ -61,10 +61,10 @@ MAIL ROUTING:
   │                                                     │
   │  ┌─────────────────────────────────────────────┐   │
   │  │           gastown/ (rig mailboxes)          │   │
-  │  │  ├── witness      ← gastown/witness         │   │
-  │  │  ├── refinery     ← gastown/refinery        │   │
-  │  │  ├── Toast        ← gastown/Toast           │   │
-  │  │  └── crew/max     ← gastown/crew/max        │   │
+  │  │  ├── witness      ← greenplace/witness         │   │
+  │  │  ├── refinery     ← greenplace/refinery        │   │
+  │  │  ├── Toast        ← greenplace/Toast           │   │
+  │  │  └── crew/max     ← greenplace/crew/max        │   │
   │  └─────────────────────────────────────────────┘   │
   └─────────────────────────────────────────────────────┘
 
@@ -72,8 +72,8 @@ ADDRESS FORMATS:
   mayor/              → Mayor inbox
   <rig>/witness       → Rig's Witness
   <rig>/refinery      → Rig's Refinery
-  <rig>/<polecat>     → Polecat (e.g., gastown/Toast)
-  <rig>/crew/<name>   → Crew worker (e.g., gastown/crew/max)
+  <rig>/<polecat>     → Polecat (e.g., greenplace/Toast)
+  <rig>/crew/<name>   → Crew worker (e.g., greenplace/crew/max)
   --human             → Special: human overseer
 
 COMMANDS:
@@ -115,14 +115,14 @@ Priority levels:
 Use --urgent as shortcut for --priority 0.
 
 Examples:
-  gt mail send gastown/Toast -s "Status check" -m "How's that bug fix going?"
+  gt mail send greenplace/Toast -s "Status check" -m "How's that bug fix going?"
   gt mail send mayor/ -s "Work complete" -m "Finished gt-abc"
   gt mail send gastown/ -s "All hands" -m "Swarm starting" --notify
-  gt mail send gastown/Toast -s "Task" -m "Fix bug" --type task --priority 1
-  gt mail send gastown/Toast -s "Urgent" -m "Help!" --urgent
+  gt mail send greenplace/Toast -s "Task" -m "Fix bug" --type task --priority 1
+  gt mail send greenplace/Toast -s "Urgent" -m "Help!" --urgent
   gt mail send mayor/ -s "Re: Status" -m "Done" --reply-to msg-abc123
   gt mail send --self -s "Handoff" -m "Context for next session"
-  gt mail send gastown/Toast -s "Update" -m "Progress report" --cc overseer
+  gt mail send greenplace/Toast -s "Update" -m "Progress report" --cc overseer
   gt mail send list:oncall -s "Alert" -m "System down"`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runMailSend,
@@ -139,8 +139,8 @@ Use --identity for polecats to explicitly specify their identity.
 Examples:
   gt mail inbox                       # Current context (auto-detected)
   gt mail inbox mayor/                # Mayor's inbox
-  gt mail inbox gastown/Toast         # Polecat's inbox
-  gt mail inbox --identity gastown/Toast  # Explicit polecat identity`,
+  gt mail inbox greenplace/Toast         # Polecat's inbox
+  gt mail inbox --identity greenplace/Toast  # Explicit polecat identity`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runMailInbox,
 }
@@ -203,7 +203,7 @@ Use --identity for polecats to explicitly specify their identity.
 Examples:
   gt mail check                           # Simple check (auto-detect identity)
   gt mail check --inject                  # For hooks
-  gt mail check --identity gastown/Toast  # Explicit polecat identity`,
+  gt mail check --identity greenplace/Toast  # Explicit polecat identity`,
 	RunE: runMailCheck,
 }
 
@@ -256,7 +256,7 @@ func init() {
 	// Inbox flags
 	mailInboxCmd.Flags().BoolVar(&mailInboxJSON, "json", false, "Output as JSON")
 	mailInboxCmd.Flags().BoolVarP(&mailInboxUnread, "unread", "u", false, "Show only unread messages")
-	mailInboxCmd.Flags().StringVar(&mailInboxIdentity, "identity", "", "Explicit identity for inbox (e.g., gastown/Toast)")
+	mailInboxCmd.Flags().StringVar(&mailInboxIdentity, "identity", "", "Explicit identity for inbox (e.g., greenplace/Toast)")
 	mailInboxCmd.Flags().StringVar(&mailInboxIdentity, "address", "", "Alias for --identity")
 
 	// Read flags
@@ -265,7 +265,7 @@ func init() {
 	// Check flags
 	mailCheckCmd.Flags().BoolVar(&mailCheckInject, "inject", false, "Output format for Claude Code hooks")
 	mailCheckCmd.Flags().BoolVar(&mailCheckJSON, "json", false, "Output as JSON")
-	mailCheckCmd.Flags().StringVar(&mailCheckIdentity, "identity", "", "Explicit identity for inbox (e.g., gastown/Toast)")
+	mailCheckCmd.Flags().StringVar(&mailCheckIdentity, "identity", "", "Explicit identity for inbox (e.g., greenplace/Toast)")
 	mailCheckCmd.Flags().StringVar(&mailCheckIdentity, "address", "", "Alias for --identity")
 
 	// Thread flags
@@ -744,7 +744,7 @@ func detectSender() string {
 
 // detectSenderFromRole builds an address from the GT_ROLE and related env vars.
 // GT_ROLE can be either a simple role name ("crew", "polecat") or a full address
-// ("gastown/crew/joe") depending on how the session was started.
+// ("greenplace/crew/joe") depending on how the session was started.
 //
 // If GT_ROLE is a simple name but required env vars (GT_RIG, GT_POLECAT, etc.)
 // are missing, falls back to cwd-based detection. This could return "overseer"

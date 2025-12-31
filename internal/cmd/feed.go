@@ -84,7 +84,7 @@ Examples:
   gt feed --plain               # Plain text output (bd activity)
   gt feed --window              # Open in dedicated tmux window
   gt feed --since 1h            # Events from last hour
-  gt feed --rig gastown         # Use gastown rig's beads`,
+  gt feed --rig greenplace         # Use gastown rig's beads`,
 	RunE: runFeed,
 }
 

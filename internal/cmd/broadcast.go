@@ -35,7 +35,7 @@ The message is sent as a nudge to each worker's Claude Code session.
 
 Examples:
   gt broadcast "Check your mail"
-  gt broadcast --rig gastown "New priority work available"
+  gt broadcast --rig greenplace "New priority work available"
   gt broadcast --all "System maintenance in 5 minutes"
   gt broadcast --dry-run "Test message"`,
 	Args: cobra.ExactArgs(1),

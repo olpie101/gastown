@@ -43,7 +43,7 @@ bd create --type=event --event-type=patrol.muted \
 
 # System entered degraded mode
 bd create --type=event --event-type=mode.degraded \
-  --actor=system:daemon --target=rig:gastown \
+  --actor=system:daemon --target=rig:greenplace \
   --payload='{"reason":"tmux unavailable"}'
 ```
 
@@ -230,10 +230,10 @@ Boot specifically:
 ```bash
 # System entered degraded mode
 bd create --type=event --event-type=mode.degraded \
-  --actor=system:daemon --target=rig:gastown \
+  --actor=system:daemon --target=rig:greenplace \
   --payload='{"reason":"tmux unavailable"}'
 
-bd update role-gastown --add-label=mode:degraded --remove-label=mode:normal
+bd update role-greenplace --add-label=mode:degraded --remove-label=mode:normal
 ```
 
 ## Configuration vs State
