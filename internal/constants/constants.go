@@ -10,7 +10,8 @@ const (
 	ShutdownNotifyDelay = 500 * time.Millisecond
 
 	// ClaudeStartTimeout is how long to wait for Claude to start in a session.
-	ClaudeStartTimeout = 15 * time.Second
+	// Increased to 60s because Claude can take 30s+ on slower machines.
+	ClaudeStartTimeout = 60 * time.Second
 
 	// ShellReadyTimeout is how long to wait for shell prompt after command.
 	ShellReadyTimeout = 5 * time.Second
