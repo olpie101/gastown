@@ -80,8 +80,8 @@ func runUp(cmd *cobra.Command, args []string) error {
 	}
 
 	// Get session names
-	deaconSession, _ := getDeaconSessionName()
-	mayorSession, _ := getMayorSessionName()
+	deaconSession := getDeaconSessionName()
+	mayorSession := getMayorSessionName()
 
 	// 2. Deacon (Claude agent)
 	if err := ensureSession(t, deaconSession, townRoot, "deacon"); err != nil {

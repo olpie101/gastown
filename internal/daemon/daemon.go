@@ -46,7 +46,7 @@ func New(config *Config) (*Daemon, error) {
 	}
 
 	// Open log file
-	logFile, err := os.OpenFile(config.LogFile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	logFile, err := os.OpenFile(config.LogFile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 	if err != nil {
 		return nil, fmt.Errorf("opening log file: %w", err)
 	}
@@ -108,7 +108,7 @@ func (d *Daemon) Run() error {
 	for {
 		select {
 		case <-d.ctx.Done():
-			d.logger.Println("Daemon context cancelled, shutting down")
+			d.logger.Println("Daemon context canceled, shutting down")
 			return d.shutdown(state)
 
 		case sig := <-sigChan:
@@ -660,7 +660,7 @@ func (d *Daemon) processLifecycleRequests() {
 }
 
 // shutdown performs graceful shutdown.
-func (d *Daemon) shutdown(state *State) error {
+func (d *Daemon) shutdown(state *State) error { //nolint:unparam // error return kept for future use
 	d.logger.Println("Daemon shutting down")
 
 	// Stop feed curator
@@ -899,7 +899,7 @@ restart_error: %v
 Manual intervention may be required.`,
 		polecatName, hookBead, restartErr)
 
-	cmd := exec.Command("gt", "mail", "send", witnessAddr, "-s", subject, "-m", body)
+	cmd := exec.Command("gt", "mail", "send", witnessAddr, "-s", subject, "-m", body) //nolint:gosec // G204: args are constructed internally
 	cmd.Dir = d.config.TownRoot
 	if err := cmd.Run(); err != nil {
 		d.logger.Printf("Warning: failed to notify witness of crashed polecat: %v", err)

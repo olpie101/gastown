@@ -163,7 +163,7 @@ func runNudge(cmd *cobra.Command, args []string) error {
 
 		// Log nudge event
 		if townRoot, err := workspace.FindFromCwd(); err == nil && townRoot != "" {
-			LogNudge(townRoot, "deacon", message)
+			_ = LogNudge(townRoot, "deacon", message)
 		}
 		_ = events.LogFeed(events.TypeNudge, sender, events.NudgePayload("", "deacon", message))
 		return nil
@@ -202,7 +202,7 @@ func runNudge(cmd *cobra.Command, args []string) error {
 
 		// Log nudge event
 		if townRoot, err := workspace.FindFromCwd(); err == nil && townRoot != "" {
-			LogNudge(townRoot, target, message)
+			_ = LogNudge(townRoot, target, message)
 		}
 		_ = events.LogFeed(events.TypeNudge, sender, events.NudgePayload(rigName, target, message))
 	} else {
@@ -223,7 +223,7 @@ func runNudge(cmd *cobra.Command, args []string) error {
 
 		// Log nudge event
 		if townRoot, err := workspace.FindFromCwd(); err == nil && townRoot != "" {
-			LogNudge(townRoot, target, message)
+			_ = LogNudge(townRoot, target, message)
 		}
 		_ = events.LogFeed(events.TypeNudge, sender, events.NudgePayload("", target, message))
 	}
@@ -424,7 +424,7 @@ func resolveNudgePattern(pattern string, agents []*AgentSession) []string {
 // Returns (shouldSend bool, level string, err error).
 // If force is true, always returns true.
 // If the agent bead cannot be found, returns true (fail-open for backward compatibility).
-func shouldNudgeTarget(townRoot, targetAddress string, force bool) (bool, string, error) {
+func shouldNudgeTarget(townRoot, targetAddress string, force bool) (bool, string, error) { //nolint:unparam // error return kept for future use
 	if force {
 		return true, "", nil
 	}

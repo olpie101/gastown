@@ -904,7 +904,7 @@ func runSlingFormula(args []string) error {
 // requires cross-database access (agent in rig db, hook bead in town db), but
 // bd slot set has a bug where it doesn't support this. See BD_BUG_AGENT_STATE_ROUTING.md.
 // The work is still correctly attached via `bd update <bead> --assignee=<agent>`.
-func updateAgentHookBead(agentID, beadID, workDir, townBeadsDir string) {
+func updateAgentHookBead(agentID, _, workDir, townBeadsDir string) { // beadID unused due to BD_BUG_AGENT_STATE_ROUTING
 	_ = townBeadsDir // Not used - BEADS_DIR breaks redirect mechanism
 
 	// Convert agent ID to agent bead ID
@@ -1166,7 +1166,7 @@ func generateDogName(mgr *dog.Manager) string {
 // slingGenerateShortID generates a short random ID (5 lowercase chars).
 func slingGenerateShortID() string {
 	b := make([]byte, 3)
-	rand.Read(b)
+	_, _ = rand.Read(b)
 	return strings.ToLower(base32.StdEncoding.EncodeToString(b)[:5])
 }
 

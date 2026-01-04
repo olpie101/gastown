@@ -335,7 +335,7 @@ func createCleanupWisp(workDir, polecatName, issueID, branch string) (string, er
 
 	labels := strings.Join(CleanupWispLabels(polecatName, "pending"), ",")
 
-	cmd := exec.Command("bd", "create",
+	cmd := exec.Command("bd", "create", //nolint:gosec // G204: args are constructed internally
 		"--wisp",
 		"--title", title,
 		"--description", description,
@@ -380,7 +380,7 @@ func createSwarmWisp(workDir string, payload *SwarmStartPayload) (string, error)
 
 	labels := strings.Join(SwarmWispLabels(payload.SwarmID, payload.Total, 0, payload.StartedAt), ",")
 
-	cmd := exec.Command("bd", "create",
+	cmd := exec.Command("bd", "create", //nolint:gosec // G204: args are constructed internally
 		"--wisp",
 		"--title", title,
 		"--description", description,
@@ -410,7 +410,7 @@ func createSwarmWisp(workDir string, payload *SwarmStartPayload) (string, error)
 
 // findCleanupWisp finds an existing cleanup wisp for a polecat.
 func findCleanupWisp(workDir, polecatName string) (string, error) {
-	cmd := exec.Command("bd", "list",
+	cmd := exec.Command("bd", "list", //nolint:gosec // G204: bd is a trusted internal tool
 		"--wisp",
 		"--labels", fmt.Sprintf("polecat:%s,state:merge-requested", polecatName),
 		"--status", "open",
@@ -475,7 +475,7 @@ func getCleanupStatus(workDir, rigName, polecatName string) string {
 	prefix := beads.GetPrefixForRig(townRoot, rigName)
 	agentBeadID := beads.PolecatBeadIDWithPrefix(prefix, rigName, polecatName)
 
-	cmd := exec.Command("bd", "show", agentBeadID, "--json")
+	cmd := exec.Command("bd", "show", agentBeadID, "--json") //nolint:gosec // G204: agentBeadID is validated internally
 	cmd.Dir = workDir
 
 	var stdout, stderr bytes.Buffer
@@ -624,7 +624,7 @@ func UpdateCleanupWispState(workDir, wispID, newState string) error {
 	// Update with new state
 	newLabels := strings.Join(CleanupWispLabels(polecatName, newState), ",")
 
-	updateCmd := exec.Command("bd", "update", wispID, "--labels", newLabels)
+	updateCmd := exec.Command("bd", "update", wispID, "--labels", newLabels) //nolint:gosec // G204: args are constructed internally
 	updateCmd.Dir = workDir
 
 	var stderr bytes.Buffer
@@ -647,7 +647,7 @@ func UpdateCleanupWispState(workDir, wispID, newState string) error {
 func NukePolecat(workDir, rigName, polecatName string) error {
 	address := fmt.Sprintf("%s/%s", rigName, polecatName)
 
-	cmd := exec.Command("gt", "polecat", "nuke", address)
+	cmd := exec.Command("gt", "polecat", "nuke", address) //nolint:gosec // G204: address is constructed from validated internal data
 	cmd.Dir = workDir
 
 	var stderr bytes.Buffer

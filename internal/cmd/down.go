@@ -74,8 +74,8 @@ func runDown(cmd *cobra.Command, args []string) error {
 	}
 
 	// Get session names
-	mayorSession, _ := getMayorSessionName()
-	deaconSession, _ := getDeaconSessionName()
+	mayorSession := getMayorSessionName()
+	deaconSession := getDeaconSessionName()
 
 	// 2. Stop Mayor
 	if err := stopSession(t, mayorSession); err != nil {

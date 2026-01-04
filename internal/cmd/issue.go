@@ -122,10 +122,7 @@ func detectCurrentSession() string {
 
 	// Check if we're mayor
 	if os.Getenv("GT_ROLE") == "mayor" {
-		mayorSession, err := getMayorSessionName()
-		if err == nil {
-			return mayorSession
-		}
+		return getMayorSessionName()
 	}
 
 	return ""

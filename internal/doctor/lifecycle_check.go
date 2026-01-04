@@ -227,8 +227,8 @@ func (c *LifecycleHygieneCheck) findStateFiles(townRoot string) []stateFileInfo 
 }
 
 // isSessionHealthy checks if the tmux session for this identity exists and is running.
-func (c *LifecycleHygieneCheck) isSessionHealthy(identity, townRoot string) bool {
-	sessionName := identityToSessionName(identity, townRoot)
+func (c *LifecycleHygieneCheck) isSessionHealthy(identity, _ string) bool {
+	sessionName := identityToSessionName(identity)
 	if sessionName == "" {
 		return false
 	}
@@ -239,7 +239,7 @@ func (c *LifecycleHygieneCheck) isSessionHealthy(identity, townRoot string) bool
 }
 
 // identityToSessionName converts an identity to its tmux session name.
-func identityToSessionName(identity, townRoot string) string {
+func identityToSessionName(identity string) string {
 	switch identity {
 	case "mayor":
 		return session.MayorSessionName()
@@ -259,7 +259,7 @@ func (c *LifecycleHygieneCheck) Fix(ctx *CheckContext) error {
 
 	// Delete stale lifecycle messages
 	for _, msg := range c.staleMessages {
-		cmd := exec.Command("gt", "mail", "delete", msg.ID)
+		cmd := exec.Command("gt", "mail", "delete", msg.ID) //nolint:gosec // G204: msg.ID is from internal state, not user input
 		cmd.Dir = ctx.TownRoot
 		if err := cmd.Run(); err != nil {
 			errors = append(errors, fmt.Sprintf("failed to delete message %s: %v", msg.ID, err))

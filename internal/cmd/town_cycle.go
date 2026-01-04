@@ -15,13 +15,9 @@ import (
 var townCycleSession string
 
 // getTownLevelSessions returns the town-level session names for the current workspace.
-// Returns empty slice if workspace cannot be determined.
 func getTownLevelSessions() []string {
-	mayorSession, errMayor := getMayorSessionName()
-	deaconSession, errDeacon := getDeaconSessionName()
-	if errMayor != nil || errDeacon != nil {
-		return nil
-	}
+	mayorSession := getMayorSessionName()
+	deaconSession := getDeaconSessionName()
 	return []string{mayorSession, deaconSession}
 }
 
@@ -35,8 +31,8 @@ func isTownLevelSession(sessionName string) bool {
 	if err != nil {
 		return false
 	}
-	mayorSession, _ := getMayorSessionName()
-	deaconSession, _ := getDeaconSessionName()
+	mayorSession := getMayorSessionName()
+	deaconSession := getDeaconSessionName()
 	_ = townName // used for session name generation
 	return sessionName == mayorSession || sessionName == deaconSession
 }

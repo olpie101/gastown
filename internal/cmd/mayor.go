@@ -15,8 +15,8 @@ import (
 )
 
 // getMayorSessionName returns the Mayor session name.
-func getMayorSessionName() (string, error) {
-	return session.MayorSessionName(), nil
+func getMayorSessionName() string {
+	return session.MayorSessionName()
 }
 
 var mayorCmd = &cobra.Command{
@@ -90,10 +90,7 @@ func init() {
 func runMayorStart(cmd *cobra.Command, args []string) error {
 	t := tmux.NewTmux()
 
-	sessionName, err := getMayorSessionName()
-	if err != nil {
-		return err
-	}
+	sessionName := getMayorSessionName()
 
 	// Check if session already exists
 	running, err := t.HasSession(sessionName)
@@ -172,10 +169,7 @@ func startMayorSession(t *tmux.Tmux, sessionName string) error {
 func runMayorStop(cmd *cobra.Command, args []string) error {
 	t := tmux.NewTmux()
 
-	sessionName, err := getMayorSessionName()
-	if err != nil {
-		return err
-	}
+	sessionName := getMayorSessionName()
 
 	// Check if session exists
 	running, err := t.HasSession(sessionName)
@@ -204,10 +198,7 @@ func runMayorStop(cmd *cobra.Command, args []string) error {
 func runMayorAttach(cmd *cobra.Command, args []string) error {
 	t := tmux.NewTmux()
 
-	sessionName, err := getMayorSessionName()
-	if err != nil {
-		return err
-	}
+	sessionName := getMayorSessionName()
 
 	// Check if session exists
 	running, err := t.HasSession(sessionName)
@@ -229,10 +220,7 @@ func runMayorAttach(cmd *cobra.Command, args []string) error {
 func runMayorStatus(cmd *cobra.Command, args []string) error {
 	t := tmux.NewTmux()
 
-	sessionName, err := getMayorSessionName()
-	if err != nil {
-		return err
-	}
+	sessionName := getMayorSessionName()
 
 	running, err := t.HasSession(sessionName)
 	if err != nil {
@@ -271,10 +259,7 @@ func runMayorStatus(cmd *cobra.Command, args []string) error {
 func runMayorRestart(cmd *cobra.Command, args []string) error {
 	t := tmux.NewTmux()
 
-	sessionName, err := getMayorSessionName()
-	if err != nil {
-		return err
-	}
+	sessionName := getMayorSessionName()
 
 	running, err := t.HasSession(sessionName)
 	if err != nil {

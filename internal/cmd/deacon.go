@@ -22,8 +22,8 @@ import (
 )
 
 // getDeaconSessionName returns the Deacon session name.
-func getDeaconSessionName() (string, error) {
-	return session.DeaconSessionName(), nil
+func getDeaconSessionName() string {
+	return session.DeaconSessionName()
 }
 
 var deaconCmd = &cobra.Command{
@@ -276,10 +276,7 @@ func init() {
 func runDeaconStart(cmd *cobra.Command, args []string) error {
 	t := tmux.NewTmux()
 
-	sessionName, err := getDeaconSessionName()
-	if err != nil {
-		return err
-	}
+	sessionName := getDeaconSessionName()
 
 	// Check if session already exists
 	running, err := t.HasSession(sessionName)
@@ -370,10 +367,7 @@ func startDeaconSession(t *tmux.Tmux, sessionName string) error {
 func runDeaconStop(cmd *cobra.Command, args []string) error {
 	t := tmux.NewTmux()
 
-	sessionName, err := getDeaconSessionName()
-	if err != nil {
-		return err
-	}
+	sessionName := getDeaconSessionName()
 
 	// Check if session exists
 	running, err := t.HasSession(sessionName)
@@ -402,10 +396,7 @@ func runDeaconStop(cmd *cobra.Command, args []string) error {
 func runDeaconAttach(cmd *cobra.Command, args []string) error {
 	t := tmux.NewTmux()
 
-	sessionName, err := getDeaconSessionName()
-	if err != nil {
-		return err
-	}
+	sessionName := getDeaconSessionName()
 
 	// Check if session exists
 	running, err := t.HasSession(sessionName)
@@ -428,10 +419,7 @@ func runDeaconAttach(cmd *cobra.Command, args []string) error {
 func runDeaconStatus(cmd *cobra.Command, args []string) error {
 	t := tmux.NewTmux()
 
-	sessionName, err := getDeaconSessionName()
-	if err != nil {
-		return err
-	}
+	sessionName := getDeaconSessionName()
 
 	running, err := t.HasSession(sessionName)
 	if err != nil {
@@ -470,10 +458,7 @@ func runDeaconStatus(cmd *cobra.Command, args []string) error {
 func runDeaconRestart(cmd *cobra.Command, args []string) error {
 	t := tmux.NewTmux()
 
-	sessionName, err := getDeaconSessionName()
-	if err != nil {
-		return err
-	}
+	sessionName := getDeaconSessionName()
 
 	running, err := t.HasSession(sessionName)
 	if err != nil {
@@ -1092,7 +1077,7 @@ func getPolecatStaleness(polecatPath string) time.Duration {
 }
 
 // nukeZombie cleans up a zombie polecat.
-func nukeZombie(townRoot string, z zombieInfo, t *tmux.Tmux) error {
+func nukeZombie(townRoot string, z zombieInfo, t *tmux.Tmux) error { //nolint:unparam // error return kept for future use
 	// Step 1: Kill tmux session if somehow still exists
 	if exists, _ := t.HasSession(z.sessionName); exists {
 		_ = t.KillSession(z.sessionName)
@@ -1204,7 +1189,7 @@ func sendMail(townRoot, to, subject, body string) {
 }
 
 // updateAgentBeadState updates an agent bead's state.
-func updateAgentBeadState(townRoot, agent, state, reason string) {
+func updateAgentBeadState(townRoot, agent, state, _ string) { // reason unused but kept for API consistency
 	beadID, _, err := agentAddressToIDs(agent)
 	if err != nil {
 		return

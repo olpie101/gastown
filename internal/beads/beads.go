@@ -39,7 +39,7 @@ func ResolveBeadsDir(workDir string) string {
 	redirectPath := filepath.Join(beadsDir, "redirect")
 
 	// Check for redirect file
-	data, err := os.ReadFile(redirectPath)
+	data, err := os.ReadFile(redirectPath) //nolint:gosec // G304: path is constructed internally
 	if err != nil {
 		// No redirect, use local .beads
 		return beadsDir
@@ -229,7 +229,7 @@ func (b *Beads) run(args ...string) ([]byte, error) {
 	// Use --no-daemon for faster read operations (avoids daemon IPC overhead)
 	// The daemon is primarily useful for write coalescing, not reads
 	fullArgs := append([]string{"--no-daemon"}, args...)
-	cmd := exec.Command("bd", fullArgs...)
+	cmd := exec.Command("bd", fullArgs...) //nolint:gosec // G204: bd is a trusted internal tool
 	cmd.Dir = b.workDir
 
 	// Set BEADS_DIR if specified (enables cross-database access)

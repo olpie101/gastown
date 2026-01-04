@@ -334,7 +334,7 @@ func (m *Manager) AddRig(opts AddRigOptions) (*Rig, error) {
 			// bd init --prefix will create the database and auto-import from issues.jsonl.
 			sourceBeadsDB := filepath.Join(mayorRigPath, ".beads", "beads.db")
 			if _, err := os.Stat(sourceBeadsDB); os.IsNotExist(err) {
-				cmd := exec.Command("bd", "init", "--prefix", sourcePrefix)
+				cmd := exec.Command("bd", "init", "--prefix", sourcePrefix) //nolint:gosec // G204: bd is a trusted internal tool
 				cmd.Dir = mayorRigPath
 				if output, err := cmd.CombinedOutput(); err != nil {
 					fmt.Printf("  Warning: Could not init bd database: %v (%s)\n", err, strings.TrimSpace(string(output)))
@@ -568,7 +568,7 @@ func (m *Manager) initBeads(rigPath, prefix string) error {
 // be initialized with 'gt' prefix for this to work.
 //
 // Agent beads track lifecycle state for ZFC compliance (gt-h3hak, gt-pinkq).
-func (m *Manager) initAgentBeads(rigPath, rigName, prefix string, isFirstRig bool) error {
+func (m *Manager) initAgentBeads(_, rigName, _ string, isFirstRig bool) error { // rigPath and prefix unused: agents use town beads not rig beads
 	// Agent beads go in town beads (gt-* prefix), not rig beads.
 	// This enables cross-rig agent coordination via canonical IDs.
 	townBeadsDir := filepath.Join(m.townRoot, ".beads")
@@ -662,7 +662,7 @@ func (m *Manager) ensureGitignoreEntry(gitignorePath, entry string) error {
 	}
 
 	// Append entry
-	f, err := os.OpenFile(gitignorePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(gitignorePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644) //nolint:gosec // G302: .gitignore should be readable by git tools
 	if err != nil {
 		return err
 	}
@@ -923,7 +923,7 @@ func (m *Manager) seedPatrolMoleculesManually(rigPath string) error {
 		}
 
 		// Create the molecule
-		cmd := exec.Command("bd", "create",
+		cmd := exec.Command("bd", "create", //nolint:gosec // G204: bd is a trusted internal tool
 			"--type=molecule",
 			"--title="+mol.title,
 			"--description="+mol.desc,
