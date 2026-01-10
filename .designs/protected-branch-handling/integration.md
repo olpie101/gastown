@@ -11,7 +11,7 @@ The recommended approach adds detection before push with a fallback to PR workfl
 ### Key Considerations
 
 - **Detection timing**: Check protection before attempting push to avoid wasted effort
-- **Existing flow**: `merge-push` step currently does direct `git push origin main`
+- **Existing flow**: `merge-push` step currently does direct `git push origin $DEFAULT_BRANCH`
 - **Gate system**: Existing `gh:pr` gates in Deacon can handle PR status checks
 - **Error handling**: Current flow treats all push failures the same (`FailurePushFail`)
 - **Backwards compatibility**: Unprotected branches should work unchanged
@@ -23,9 +23,10 @@ inbox-check → queue-scan → process-branch → run-tests → handle-failures 
 ```
 
 The `merge-push` step currently:
-1. `git checkout main`
-2. `git merge --ff-only temp`
-3. `git push origin main` ← **Failure point for protected branches**
+1. Detect default branch: `DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD --short | sed 's,.*/,,')`
+2. `git checkout $DEFAULT_BRANCH`
+3. `git merge --ff-only temp`
+4. `git push origin $DEFAULT_BRANCH` ← **Failure point for protected branches**
 4. Send MERGED notification
 5. Close MR bead
 6. Cleanup branches
@@ -117,7 +118,7 @@ Create and merge PR for protected branch.
 
 **Step 1: Create PR**
 ```bash
-gh pr create --base main --head temp \
+gh pr create --base $DEFAULT_BRANCH --head temp \
   --title "Merge <issue-id>: <title>" \
   --body "Automated merge from refinery.
 Issue: <issue-id>

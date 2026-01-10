@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-The Gas Town refinery currently attempts direct pushes to `main` after merging polecat branches. This fails silently when the target branch has GitHub branch protection rules enabled (required reviews, status checks, etc.).
+The Gas Town refinery currently attempts direct pushes to the default branch after merging polecat branches. This fails silently when the target branch has GitHub branch protection rules enabled (required reviews, status checks, etc.).
 
 This design proposes adding protected branch detection to the refinery patrol flow. When protection is detected, the refinery will create a GitHub PR instead of direct pushing, leveraging the existing gate system to handle the async approval workflow.
 
@@ -10,7 +10,12 @@ The implementation uses the existing `gh` CLI for GitHub API access, adds minima
 
 ## Problem Statement
 
-**Current behavior**: The refinery's `merge-push` step does `git push origin main`, which fails with an error when the branch is protected. The failure is treated as a generic push failure (`FailurePushFail`) with no special handling.
+**Current behavior**: The refinery's `merge-push` step does `git push origin $DEFAULT_BRANCH`, which fails with an error when the branch is protected. The failure is treated as a generic push failure (`FailurePushFail`) with no special handling.
+
+Note: The default branch is detected dynamically using:
+```bash
+DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD --short | sed 's,.*/,,')
+```
 
 **Desired behavior**: The refinery should detect protected branches before pushing and route to an appropriate workflow (PR-based merge) when protection is enabled.
 
@@ -112,7 +117,7 @@ Modified `merge-push` step in patrol formula:
 ```toml
 # Before pushing, check protection
 # If protected:
-gh pr create --base main --head temp --title "Merge <issue-id>" --body "..."
+gh pr create --base $DEFAULT_BRANCH --head temp --title "Merge <issue-id>" --body "..."
 bd gate create --await gh:pr:<pr-number> --waiter <refinery-mail>
 # Park and continue to next MR; gate system handles async
 
@@ -130,7 +135,7 @@ const FailureProtectedBranch FailureType = "protected_branch"
 
 **New CLI output** (when protection detected):
 ```
-Protected branch detected: main
+Protected branch detected: $DEFAULT_BRANCH
 Creating PR instead of direct push...
 PR #123 created, waiting for required checks
 Gate gh:pr:123 created, parking merge
