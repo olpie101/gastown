@@ -122,10 +122,11 @@ git stash push -m "unrelated changes before {{issue}}"
 git checkout -- .
 ```
 
-**4. Sync with main:**
+**4. Sync with default branch:**
 ```bash
 git fetch origin
-git rebase origin/main      # Get latest, rebase your branch
+DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD --short | sed 's,.*/,,')
+git rebase origin/$DEFAULT_BRANCH      # Get latest, rebase your branch
 ```
 
 If rebase conflicts:
@@ -145,10 +146,11 @@ Check if the codebase is healthy BEFORE starting your work.
 **The Scotty Principle:** Don't walk past a broken warp core. But also don't
 let someone else's mess consume your entire mission.
 
-**1. Check tests on main:**
+**1. Check tests on default branch:**
 ```bash
 git stash                   # Save your branch state
-git checkout origin/main
+DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD --short | sed 's,.*/,,')
+git checkout origin/$DEFAULT_BRANCH
 go test ./...               # Or appropriate test command
 ```
 
@@ -172,12 +174,13 @@ Make a judgment call:
 **Quick fix path:**
 ```bash
 # Fix the issue
+DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD --short | sed 's,.*/,,')
 git add <files>
 git commit -m "fix: <description> (pre-existing failure)"
-git push origin main
+git push origin $DEFAULT_BRANCH
 git checkout -
 git stash pop
-git rebase origin/main      # Get your fix
+git rebase origin/$DEFAULT_BRANCH      # Get your fix
 ```
 
 **File and proceed path:**
@@ -257,8 +260,9 @@ Review your own changes before running tests.
 
 **1. Review the diff:**
 ```bash
-git diff origin/main...HEAD     # All changes vs main
-git log --oneline origin/main..HEAD  # All commits
+DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD --short | sed 's,.*/,,')
+git diff origin/$DEFAULT_BRANCH...HEAD     # All changes vs default branch
+git log --oneline origin/$DEFAULT_BRANCH..HEAD  # All commits
 ```
 
 **2. Check for common issues:**
@@ -276,7 +280,8 @@ Don't just note them - fix them now. Amend or add commits as needed.
 
 **4. Verify no unintended changes:**
 ```bash
-git diff --stat origin/main...HEAD
+DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD --short | sed 's,.*/,,')
+git diff --stat origin/$DEFAULT_BRANCH...HEAD
 # Only files relevant to {{issue}} should appear
 ```
 
@@ -369,10 +374,11 @@ git push -u origin $(git branch --show-current)
 
 **5. Verify nothing left behind:**
 ```bash
+DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD --short | sed 's,.*/,,')
 git status                  # Clean
 git stash list              # Empty
-git log origin/main..HEAD   # Your commits
-git diff origin/main...HEAD # Your changes (expected)
+git log origin/$DEFAULT_BRANCH..HEAD   # Your commits
+git diff origin/$DEFAULT_BRANCH...HEAD # Your changes (expected)
 ```
 
 **Exit criteria:** Branch pushed, workspace clean, no cruft."""

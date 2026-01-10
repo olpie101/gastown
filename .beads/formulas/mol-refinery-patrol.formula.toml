@@ -131,8 +131,8 @@ Pick next branch from queue. Attempt mechanical rebase on current default branch
 
 **Step 0: Get the default branch**
 ```bash
-# Read default branch from rig config (fallback to 'main' if not found)
-DEFAULT_BRANCH=$(jq -r '.default_branch // "main"' ../../config.json)
+# Detect default branch dynamically from git
+DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD --short | sed 's,.*/,,')
 ```
 
 **Step 1: Checkout and attempt rebase**
@@ -252,7 +252,7 @@ Merge to default branch and push. CRITICAL: Notifications come IMMEDIATELY after
 
 **Step 0: Get the default branch** (if not already set from process-branch)
 ```bash
-DEFAULT_BRANCH=$(jq -r '.default_branch // "main"' ../../config.json)
+DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD --short | sed 's,.*/,,')
 ```
 
 **Step 1: Merge and Push**
@@ -419,7 +419,7 @@ gt mail archive <message-id>
 
 First, get the default branch:
 ```bash
-DEFAULT_BRANCH=$(jq -r '.default_branch // "main"' ../../config.json)
+DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD --short | sed 's,.*/,,')
 ```
 
 Look for open MR beads with no corresponding branch:
