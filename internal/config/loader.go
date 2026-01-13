@@ -898,6 +898,102 @@ func ResolveAgentConfigWithOverride(townRoot, rigPath, agentOverride string) (*R
 	return lookupAgentConfig(agentName, townSettings, rigSettings), agentName, nil
 }
 
+// ResolveRoleAgentConfig resolves the agent configuration for a specific role.
+// It checks role-specific agent assignments before falling back to the default agent.
+//
+// Resolution order:
+//  1. Rig's RoleAgents[role] - if set, look up that agent
+//  2. Town's RoleAgents[role] - if set, look up that agent
+//  3. Fall back to ResolveAgentConfig (rig's Agent → town's DefaultAgent → "claude")
+//
+// role is one of: "mayor", "deacon", "witness", "refinery", "polecat", "crew".
+// townRoot is the path to the town directory (e.g., ~/gt).
+// rigPath is the path to the rig directory (e.g., ~/gt/gastown), or empty for town-level roles.
+func ResolveRoleAgentConfig(role, townRoot, rigPath string) *RuntimeConfig {
+	// Load rig settings (may be nil for town-level roles like mayor/deacon)
+	var rigSettings *RigSettings
+	if rigPath != "" {
+		var err error
+		rigSettings, err = LoadRigSettings(RigSettingsPath(rigPath))
+		if err != nil {
+			rigSettings = nil
+		}
+	}
+
+	// Load town settings
+	townSettings, err := LoadOrCreateTownSettings(TownSettingsPath(townRoot))
+	if err != nil {
+		townSettings = NewTownSettings()
+	}
+
+	// Load custom agent registries
+	_ = LoadAgentRegistry(DefaultAgentRegistryPath(townRoot))
+	if rigPath != "" {
+		_ = LoadRigAgentRegistry(RigAgentRegistryPath(rigPath))
+	}
+
+	// Check rig's RoleAgents first
+	if rigSettings != nil && rigSettings.RoleAgents != nil {
+		if agentName, ok := rigSettings.RoleAgents[role]; ok && agentName != "" {
+			return lookupAgentConfig(agentName, townSettings, rigSettings)
+		}
+	}
+
+	// Check town's RoleAgents
+	if townSettings.RoleAgents != nil {
+		if agentName, ok := townSettings.RoleAgents[role]; ok && agentName != "" {
+			return lookupAgentConfig(agentName, townSettings, rigSettings)
+		}
+	}
+
+	// Fall back to existing resolution (rig's Agent → town's DefaultAgent → "claude")
+	return ResolveAgentConfig(townRoot, rigPath)
+}
+
+// ResolveRoleAgentName returns the agent name that would be used for a specific role.
+// This is useful for logging and diagnostics.
+// Returns the agent name and whether it came from role-specific configuration.
+func ResolveRoleAgentName(role, townRoot, rigPath string) (agentName string, isRoleSpecific bool) {
+	// Load rig settings
+	var rigSettings *RigSettings
+	if rigPath != "" {
+		var err error
+		rigSettings, err = LoadRigSettings(RigSettingsPath(rigPath))
+		if err != nil {
+			rigSettings = nil
+		}
+	}
+
+	// Load town settings
+	townSettings, err := LoadOrCreateTownSettings(TownSettingsPath(townRoot))
+	if err != nil {
+		townSettings = NewTownSettings()
+	}
+
+	// Check rig's RoleAgents first
+	if rigSettings != nil && rigSettings.RoleAgents != nil {
+		if name, ok := rigSettings.RoleAgents[role]; ok && name != "" {
+			return name, true
+		}
+	}
+
+	// Check town's RoleAgents
+	if townSettings.RoleAgents != nil {
+		if name, ok := townSettings.RoleAgents[role]; ok && name != "" {
+			return name, true
+		}
+	}
+
+	// Fall back to existing resolution
+	if rigSettings != nil && rigSettings.Agent != "" {
+		return rigSettings.Agent, false
+	}
+	if townSettings.DefaultAgent != "" {
+		return townSettings.DefaultAgent, false
+	}
+	return "claude", false
+}
+
 // lookupAgentConfig looks up an agent by name.
 // Checks rig-level custom agents first, then town's custom agents, then built-in presets from agents.go.
 func lookupAgentConfig(name string, townSettings *TownSettings, rigSettings *RigSettings) *RuntimeConfig {
@@ -1170,6 +1266,7 @@ func BuildStartupCommandWithAgentOverride(envVars map[string]string, rigPath, pr
 	return cmd, nil
 }
 
+
 // BuildAgentStartupCommand is a convenience function for starting agent sessions.
 // It sets standard environment variables (GT_ROLE, BD_ACTOR, GIT_AUTHOR_NAME)
 // and builds the full startup command.
@@ -1195,55 +1292,23 @@ func BuildAgentStartupCommandWithAgentOverride(role, bdActor, rigPath, prompt, a
 // BuildPolecatStartupCommand builds the startup command for a polecat.
 // Sets GT_ROLE, GT_RIG, GT_POLECAT, BD_ACTOR, and GIT_AUTHOR_NAME.
 func BuildPolecatStartupCommand(rigName, polecatName, rigPath, prompt string) string {
-	bdActor := fmt.Sprintf("%s/polecats/%s", rigName, polecatName)
-	envVars := map[string]string{
-		"GT_ROLE":         "polecat",
-		"GT_RIG":          rigName,
-		"GT_POLECAT":      polecatName,
-		"BD_ACTOR":        bdActor,
-		"GIT_AUTHOR_NAME": polecatName,
-	}
-	return BuildStartupCommand(envVars, rigPath, prompt)
+	return BuildStartupCommand(AgentEnvSimple("polecat", rigName, polecatName), rigPath, prompt)
 }
 
 // BuildPolecatStartupCommandWithAgentOverride is like BuildPolecatStartupCommand, but uses agentOverride if non-empty.
 func BuildPolecatStartupCommandWithAgentOverride(rigName, polecatName, rigPath, prompt, agentOverride string) (string, error) {
-	bdActor := fmt.Sprintf("%s/polecats/%s", rigName, polecatName)
-	envVars := map[string]string{
-		"GT_ROLE":         "polecat",
-		"GT_RIG":          rigName,
-		"GT_POLECAT":      polecatName,
-		"BD_ACTOR":        bdActor,
-		"GIT_AUTHOR_NAME": polecatName,
-	}
-	return BuildStartupCommandWithAgentOverride(envVars, rigPath, prompt, agentOverride)
+	return BuildStartupCommandWithAgentOverride(AgentEnvSimple("polecat", rigName, polecatName), rigPath, prompt, agentOverride)
 }
 
 // BuildCrewStartupCommand builds the startup command for a crew member.
 // Sets GT_ROLE, GT_RIG, GT_CREW, BD_ACTOR, and GIT_AUTHOR_NAME.
 func BuildCrewStartupCommand(rigName, crewName, rigPath, prompt string) string {
-	bdActor := fmt.Sprintf("%s/crew/%s", rigName, crewName)
-	envVars := map[string]string{
-		"GT_ROLE":         "crew",
-		"GT_RIG":          rigName,
-		"GT_CREW":         crewName,
-		"BD_ACTOR":        bdActor,
-		"GIT_AUTHOR_NAME": crewName,
-	}
-	return BuildStartupCommand(envVars, rigPath, prompt)
+	return BuildStartupCommand(AgentEnvSimple("crew", rigName, crewName), rigPath, prompt)
 }
 
 // BuildCrewStartupCommandWithAgentOverride is like BuildCrewStartupCommand, but uses agentOverride if non-empty.
 func BuildCrewStartupCommandWithAgentOverride(rigName, crewName, rigPath, prompt, agentOverride string) (string, error) {
-	bdActor := fmt.Sprintf("%s/crew/%s", rigName, crewName)
-	envVars := map[string]string{
-		"GT_ROLE":         "crew",
-		"GT_RIG":          rigName,
-		"GT_CREW":         crewName,
-		"BD_ACTOR":        bdActor,
-		"GIT_AUTHOR_NAME": crewName,
-	}
-	return BuildStartupCommandWithAgentOverride(envVars, rigPath, prompt, agentOverride)
+	return BuildStartupCommandWithAgentOverride(AgentEnvSimple("crew", rigName, crewName), rigPath, prompt, agentOverride)
 }
 
 // ExpectedPaneCommands returns tmux pane command names that indicate the runtime is running.
@@ -1256,6 +1321,21 @@ func ExpectedPaneCommands(rc *RuntimeConfig) []string {
 		return []string{"node"}
 	}
 	return []string{filepath.Base(rc.Command)}
+}
+
+// GetDefaultFormula returns the default formula for a rig from settings/config.json.
+// Returns empty string if no default is configured.
+// rigPath is the path to the rig directory (e.g., ~/gt/gastown).
+func GetDefaultFormula(rigPath string) string {
+	settingsPath := RigSettingsPath(rigPath)
+	settings, err := LoadRigSettings(settingsPath)
+	if err != nil {
+		return ""
+	}
+	if settings.Workflow == nil {
+		return ""
+	}
+	return settings.Workflow.DefaultFormula
 }
 
 // GetRigPrefix returns the beads prefix for a rig from rigs.json.
@@ -1280,4 +1360,133 @@ func GetRigPrefix(townRoot, rigName string) string {
 	// Strip trailing hyphen if present (prefix stored as "gt-" but used as "gt")
 	prefix := entry.BeadsConfig.Prefix
 	return strings.TrimSuffix(prefix, "-")
+}
+
+// EscalationConfigPath returns the standard path for escalation config in a town.
+func EscalationConfigPath(townRoot string) string {
+	return filepath.Join(townRoot, "settings", "escalation.json")
+}
+
+// LoadEscalationConfig loads and validates an escalation configuration file.
+func LoadEscalationConfig(path string) (*EscalationConfig, error) {
+	data, err := os.ReadFile(path) //nolint:gosec // G304: path is constructed internally, not from user input
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("%w: %s", ErrNotFound, path)
+		}
+		return nil, fmt.Errorf("reading escalation config: %w", err)
+	}
+
+	var config EscalationConfig
+	if err := json.Unmarshal(data, &config); err != nil {
+		return nil, fmt.Errorf("parsing escalation config: %w", err)
+	}
+
+	if err := validateEscalationConfig(&config); err != nil {
+		return nil, err
+	}
+
+	return &config, nil
+}
+
+// LoadOrCreateEscalationConfig loads the escalation config, creating a default if not found.
+func LoadOrCreateEscalationConfig(path string) (*EscalationConfig, error) {
+	config, err := LoadEscalationConfig(path)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return NewEscalationConfig(), nil
+		}
+		return nil, err
+	}
+	return config, nil
+}
+
+// SaveEscalationConfig saves an escalation configuration to a file.
+func SaveEscalationConfig(path string, config *EscalationConfig) error {
+	if err := validateEscalationConfig(config); err != nil {
+		return err
+	}
+
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return fmt.Errorf("creating directory: %w", err)
+	}
+
+	data, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encoding escalation config: %w", err)
+	}
+
+	if err := os.WriteFile(path, data, 0644); err != nil { //nolint:gosec // G306: escalation config doesn't contain secrets
+		return fmt.Errorf("writing escalation config: %w", err)
+	}
+
+	return nil
+}
+
+// validateEscalationConfig validates an EscalationConfig.
+func validateEscalationConfig(c *EscalationConfig) error {
+	if c.Type != "escalation" && c.Type != "" {
+		return fmt.Errorf("%w: expected type 'escalation', got '%s'", ErrInvalidType, c.Type)
+	}
+	if c.Version > CurrentEscalationVersion {
+		return fmt.Errorf("%w: got %d, max supported %d", ErrInvalidVersion, c.Version, CurrentEscalationVersion)
+	}
+
+	// Validate stale_threshold if specified
+	if c.StaleThreshold != "" {
+		if _, err := time.ParseDuration(c.StaleThreshold); err != nil {
+			return fmt.Errorf("invalid stale_threshold: %w", err)
+		}
+	}
+
+	// Initialize nil maps
+	if c.Routes == nil {
+		c.Routes = make(map[string][]string)
+	}
+
+	// Validate severity route keys
+	for severity := range c.Routes {
+		if !IsValidSeverity(severity) {
+			return fmt.Errorf("%w: unknown severity '%s' (valid: low, medium, high, critical)", ErrMissingField, severity)
+		}
+	}
+
+	// Validate max_reescalations is non-negative
+	if c.MaxReescalations < 0 {
+		return fmt.Errorf("%w: max_reescalations must be non-negative", ErrMissingField)
+	}
+
+	return nil
+}
+
+// GetStaleThreshold returns the stale threshold as a time.Duration.
+// Returns 4 hours if not configured or invalid.
+func (c *EscalationConfig) GetStaleThreshold() time.Duration {
+	if c.StaleThreshold == "" {
+		return 4 * time.Hour
+	}
+	d, err := time.ParseDuration(c.StaleThreshold)
+	if err != nil {
+		return 4 * time.Hour
+	}
+	return d
+}
+
+// GetRouteForSeverity returns the escalation route actions for a given severity.
+// Falls back to ["bead", "mail:mayor"] if no specific route is configured.
+func (c *EscalationConfig) GetRouteForSeverity(severity string) []string {
+	if route, ok := c.Routes[severity]; ok {
+		return route
+	}
+	// Fallback to default route
+	return []string{"bead", "mail:mayor"}
+}
+
+// GetMaxReescalations returns the maximum number of re-escalations allowed.
+// Returns 2 if not configured.
+func (c *EscalationConfig) GetMaxReescalations() int {
+	if c.MaxReescalations <= 0 {
+		return 2
+	}
+	return c.MaxReescalations
 }

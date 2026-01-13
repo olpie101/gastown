@@ -1,26 +1,29 @@
 description = """
-Full polecat work lifecycle from assignment through MR submission.
+Full polecat work lifecycle from assignment through completion.
 
 This molecule guides a polecat through a complete work assignment. Each step
 has clear entry/exit criteria and specific commands to run. A polecat can
 crash after any step and resume from the last completed step.
 
-## Polecat Contract (Ephemeral Model)
+## Polecat Contract (Self-Cleaning Model)
 
-You are an ephemeral worker. You:
+You are a self-cleaning worker. You:
 1. Receive work via your hook (pinned molecule + issue)
 2. Work through molecule steps using `bd ready` / `bd close <step>`
-3. Submit to merge queue via `gt done`
-4. Become recyclable - Refinery handles the rest
+3. Complete and self-clean via `gt done` (submit + nuke yourself)
+4. You are GONE - Refinery merges from MQ
+
+**Self-cleaning:** When you run `gt done`, you push your work, submit to MQ,
+nuke your sandbox, and exit. There is no idle state. Done means gone.
 
 **Important:** This formula defines the template. Your molecule already has step
 beads created from it. Use `bd ready` to find them - do NOT read this file directly.
 
 **You do NOT:**
-- Push directly to main (Refinery merges)
+- Push directly to main (Refinery merges from MQ)
 - Close your own issue (Refinery closes after merge)
-- Wait for merge (you're done at MR submission)
-- Handle rebase conflicts (Refinery dispatches fresh polecats for that)
+- Wait for merge (you're gone after `gt done`)
+- Handle rebase conflicts (Refinery spawns fresh polecats for that)
 
 ## Variables
 
@@ -37,7 +40,7 @@ beads created from it. Use `bd ready` to find them - do NOT read this file direc
 | Context filling | Use gt handoff to cycle to fresh session |
 | Unsure what to do | Mail Witness, don't guess |"""
 formula = "mol-polecat-work"
-version = 4
+version = 5
 
 [[steps]]
 id = "load-context"
@@ -51,7 +54,13 @@ gt prime                    # Load role context
 bd prime                    # Load beads context
 ```
 
-**2. Check your hook:**
+**2. Detect the default branch (used throughout this workflow):**
+```bash
+DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD --short | sed 's,.*/,,')
+echo "Default branch: $DEFAULT_BRANCH"
+```
+
+**3. Check your hook:**
 ```bash
 gt hook               # Shows your pinned molecule and hook_bead
 ```
@@ -61,19 +70,19 @@ The hook_bead is your assigned issue. Read it carefully:
 bd show {{issue}}           # Full issue details
 ```
 
-**3. Check inbox for additional context:**
+**4. Check inbox for additional context:**
 ```bash
 gt mail inbox
 # Read any HANDOFF or assignment messages
 ```
 
-**4. Understand the requirements:**
+**5. Understand the requirements:**
 - What exactly needs to be done?
 - What files are likely involved?
 - Are there dependencies or blockers?
 - What does "done" look like?
 
-**5. Verify you can proceed:**
+**6. Verify you can proceed:**
 - No unresolved blockers on the issue
 - You understand what to do
 - Required resources are available
@@ -122,10 +131,10 @@ git stash push -m "unrelated changes before {{issue}}"
 git checkout -- .
 ```
 
-**4. Sync with main:**
+**4. Sync with default branch:**
 ```bash
 git fetch origin
-git rebase origin/main      # Get latest, rebase your branch
+git rebase origin/$DEFAULT_BRANCH      # Get latest, rebase your branch
 ```
 
 If rebase conflicts:
@@ -145,10 +154,10 @@ Check if the codebase is healthy BEFORE starting your work.
 **The Scotty Principle:** Don't walk past a broken warp core. But also don't
 let someone else's mess consume your entire mission.
 
-**1. Check tests on main:**
+**1. Check tests on default branch:**
 ```bash
 git stash                   # Save your branch state
-git checkout origin/main
+git checkout origin/$DEFAULT_BRANCH
 go test ./...               # Or appropriate test command
 ```
 
@@ -174,10 +183,10 @@ Make a judgment call:
 # Fix the issue
 git add <files>
 git commit -m "fix: <description> (pre-existing failure)"
-git push origin main
+git push origin $DEFAULT_BRANCH
 git checkout -
 git stash pop
-git rebase origin/main      # Get your fix
+git rebase origin/$DEFAULT_BRANCH      # Get your fix
 ```
 
 **File and proceed path:**
@@ -257,8 +266,8 @@ Review your own changes before running tests.
 
 **1. Review the diff:**
 ```bash
-git diff origin/main...HEAD     # All changes vs main
-git log --oneline origin/main..HEAD  # All commits
+git diff origin/$DEFAULT_BRANCH...HEAD     # All changes vs default branch
+git log --oneline origin/$DEFAULT_BRANCH..HEAD  # All commits
 ```
 
 **2. Check for common issues:**
@@ -276,7 +285,7 @@ Don't just note them - fix them now. Amend or add commits as needed.
 
 **4. Verify no unintended changes:**
 ```bash
-git diff --stat origin/main...HEAD
+git diff --stat origin/$DEFAULT_BRANCH...HEAD
 # Only files relevant to {{issue}} should appear
 ```
 
@@ -371,8 +380,8 @@ git push -u origin $(git branch --show-current)
 ```bash
 git status                  # Clean
 git stash list              # Empty
-git log origin/main..HEAD   # Your commits
-git diff origin/main...HEAD # Your changes (expected)
+git log origin/$DEFAULT_BRANCH..HEAD   # Your commits
+git diff origin/$DEFAULT_BRANCH...HEAD # Your changes (expected)
 ```
 
 **Exit criteria:** Branch pushed, workspace clean, no cruft."""
@@ -407,30 +416,23 @@ bd sync
 
 [[steps]]
 id = "submit-and-exit"
-title = "Submit to merge queue and exit"
+title = "Submit work and self-clean"
 needs = ["prepare-for-review"]
 description = """
-Submit your work to the merge queue. You become recyclable after this.
+Submit your work and clean up. You cease to exist after this step.
 
-**Ephemeral Polecat Model:**
-Once you submit, you're done. The Refinery will:
-1. Process your merge request
-2. Handle rebasing (mechanical rebases done automatically)
-3. Close your issue after successful merge
-4. Create conflict-resolution tasks if needed (fresh polecat handles those)
+**Self-Cleaning Model:**
+Once you run `gt done`, you're gone. The command:
+1. Pushes your branch to origin
+2. Creates an MR bead in the merge queue
+3. Nukes your sandbox (worktree removal)
+4. Exits your session immediately
 
-**1. Submit with gt done:**
+**Run gt done:**
 ```bash
 gt done
 ```
 
-This single command:
-- Creates an MR bead in the merge queue
-- Notifies the Witness (POLECAT_DONE)
-- Updates your agent state to 'done'
-- Reports cleanup status (ZFC compliance)
-
-**2. Verify submission:**
 You should see output like:
 ```
 ✓ Work submitted to merge queue
@@ -438,20 +440,19 @@ You should see output like:
   Source: polecat/<name>
   Target: main
   Issue: {{issue}}
+✓ Sandbox nuked
+✓ Session exiting
 ```
 
-**3. You're recyclable:**
-Your work is in the queue. The Witness knows you're done.
-Your sandbox can be cleaned up - all work is pushed to origin.
+**What happens next (not your concern):**
+- Refinery processes your MR from the queue
+- Refinery rebases and merges to main
+- Refinery closes the issue
+- If conflicts: Refinery spawns a FRESH polecat to re-implement
 
-If you have context remaining, you may:
-- Pick up new work from `bd ready`
-- Or use `gt handoff` to cycle to a fresh session
+You are NOT involved in any of that. You're gone. Done means gone.
 
-If the Refinery needs conflict resolution, it will dispatch a fresh polecat.
-You do NOT need to wait around.
-
-**Exit criteria:** MR submitted, Witness notified, polecat recyclable."""
+**Exit criteria:** Work submitted, sandbox nuked, session exited."""
 
 [vars]
 [vars.issue]

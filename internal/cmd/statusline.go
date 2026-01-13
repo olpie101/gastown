@@ -182,10 +182,12 @@ func runMayorStatusLine(t *tmux.Tmux) error {
 		}
 	}
 
-	// Track per-rig status for LED indicators
+	// Track per-rig status for LED indicators and sorting
 	type rigStatus struct {
-		hasWitness  bool
-		hasRefinery bool
+		hasWitness   bool
+		hasRefinery  bool
+		polecatCount int
+		opState      string // "OPERATIONAL", "PARKED", or "DOCKED"
 	}
 	rigStatuses := make(map[string]*rigStatus)
 
@@ -194,13 +196,26 @@ func runMayorStatusLine(t *tmux.Tmux) error {
 		rigStatuses[rigName] = &rigStatus{}
 	}
 
-	// Count polecats and track rig witness/refinery status
-	polecatCount := 0
+	// Track per-agent-type health (working/zombie counts)
+	type agentHealth struct {
+		total   int
+		working int
+	}
+	healthByType := map[AgentType]*agentHealth{
+		AgentPolecat:  {},
+		AgentWitness:  {},
+		AgentRefinery: {},
+		AgentDeacon:   {},
+	}
+
+	// Single pass: track rig status AND agent health
 	for _, s := range sessions {
 		agent := categorizeSession(s)
 		if agent == nil {
 			continue
 		}
+
+		// Track rig-level status (witness/refinery/polecat presence)
 		if agent.Rig != "" && registeredRigs[agent.Rig] {
 			if rigStatuses[agent.Rig] == nil {
 				rigStatuses[agent.Rig] = &rigStatus{}
@@ -211,42 +226,143 @@ func runMayorStatusLine(t *tmux.Tmux) error {
 			case AgentRefinery:
 				rigStatuses[agent.Rig].hasRefinery = true
 			case AgentPolecat:
-				polecatCount++
+				rigStatuses[agent.Rig].polecatCount++
 			}
+		}
+
+		// Track agent health (skip Mayor and Crew)
+		if health := healthByType[agent.Type]; health != nil {
+			health.total++
+			// Detect working state via ✻ symbol
+			if isSessionWorking(t, s) {
+				health.working++
+			}
+		}
+	}
+
+	// Get operational state for each rig
+	for rigName, status := range rigStatuses {
+		opState, _ := getRigOperationalState(townRoot, rigName)
+		if opState == "PARKED" || opState == "DOCKED" {
+			status.opState = opState
+		} else {
+			status.opState = "OPERATIONAL"
 		}
 	}
 
 	// Build status
 	var parts []string
-	parts = append(parts, fmt.Sprintf("%d 😺", polecatCount))
+
+	// Add per-agent-type health in consistent order
+	// Format: "1/10 😺" = 1 working out of 10 total
+	// Only show agent types that have sessions
+	agentOrder := []AgentType{AgentPolecat, AgentWitness, AgentRefinery, AgentDeacon}
+	var agentParts []string
+	for _, agentType := range agentOrder {
+		health := healthByType[agentType]
+		if health.total == 0 {
+			continue
+		}
+		icon := AgentTypeIcons[agentType]
+		agentParts = append(agentParts, fmt.Sprintf("%d/%d %s", health.working, health.total, icon))
+	}
+	if len(agentParts) > 0 {
+		parts = append(parts, strings.Join(agentParts, " "))
+	}
 
 	// Build rig status display with LED indicators
 	// 🟢 = both witness and refinery running (fully active)
 	// 🟡 = one of witness/refinery running (partially active)
-	// ⚫ = neither running (inactive)
-	var rigParts []string
-	var rigNames []string
-	for rigName := range rigStatuses {
-		rigNames = append(rigNames, rigName)
-	}
-	sort.Strings(rigNames)
+	// 🅿️ = parked (nothing running, intentionally paused)
+	// 🛑 = docked (nothing running, global shutdown)
+	// ⚫ = operational but nothing running (unexpected state)
 
-	for _, rigName := range rigNames {
-		status := rigStatuses[rigName]
+	// Create sortable rig list
+	type rigInfo struct {
+		name   string
+		status *rigStatus
+	}
+	var rigs []rigInfo
+	for rigName, status := range rigStatuses {
+		rigs = append(rigs, rigInfo{name: rigName, status: status})
+	}
+
+	// Sort by: 1) running state, 2) polecat count (desc), 3) operational state, 4) alphabetical
+	sort.Slice(rigs, func(i, j int) bool {
+		isRunningI := rigs[i].status.hasWitness || rigs[i].status.hasRefinery
+		isRunningJ := rigs[j].status.hasWitness || rigs[j].status.hasRefinery
+
+		// Primary sort: running rigs before non-running rigs
+		if isRunningI != isRunningJ {
+			return isRunningI
+		}
+
+		// Secondary sort: polecat count (descending)
+		if rigs[i].status.polecatCount != rigs[j].status.polecatCount {
+			return rigs[i].status.polecatCount > rigs[j].status.polecatCount
+		}
+
+		// Tertiary sort: operational state (for non-running rigs: OPERATIONAL < PARKED < DOCKED)
+		stateOrder := map[string]int{"OPERATIONAL": 0, "PARKED": 1, "DOCKED": 2}
+		stateI := stateOrder[rigs[i].status.opState]
+		stateJ := stateOrder[rigs[j].status.opState]
+		if stateI != stateJ {
+			return stateI < stateJ
+		}
+
+		// Quaternary sort: alphabetical
+		return rigs[i].name < rigs[j].name
+	})
+
+	// Build display with group separators
+	var rigParts []string
+	var lastGroup string
+	for _, rig := range rigs {
+		isRunning := rig.status.hasWitness || rig.status.hasRefinery
+		var currentGroup string
+		if isRunning {
+			currentGroup = "running"
+		} else {
+			currentGroup = "idle-" + rig.status.opState
+		}
+
+		// Add separator when group changes (running -> non-running, or different opStates within non-running)
+		if lastGroup != "" && lastGroup != currentGroup {
+			rigParts = append(rigParts, "|")
+		}
+		lastGroup = currentGroup
+
+		status := rig.status
 		var led string
 
-		// Check if rig is parked or docked
-		opState, _ := getRigOperationalState(townRoot, rigName)
-		if opState == "PARKED" || opState == "DOCKED" {
-			led = "⏸️" // Parked/docked - intentionally offline
-		} else if status.hasWitness && status.hasRefinery {
+		// Check if processes are running first (regardless of operational state)
+		if status.hasWitness && status.hasRefinery {
 			led = "🟢" // Both running - fully active
 		} else if status.hasWitness || status.hasRefinery {
 			led = "🟡" // One running - partially active
 		} else {
-			led = "⚫" // Neither running - inactive
+			// Nothing running - show operational state
+			switch status.opState {
+			case "PARKED":
+				led = "🅿️" // Parked - intentionally paused
+			case "DOCKED":
+				led = "🛑" // Docked - global shutdown
+			default:
+				led = "⚫" // Operational but nothing running
+			}
 		}
-		rigParts = append(rigParts, led+rigName)
+
+		// Show polecat count if > 0
+		// All icons get 1 space, Park gets 2
+		space := " "
+		if led == "🅿️" {
+			space = "  "
+		}
+		display := led + space + rig.name
+		if status.polecatCount > 0 {
+			display += fmt.Sprintf("(%d)", status.polecatCount)
+		}
+		rigParts = append(rigParts, display)
 	}
 
 	if len(rigParts) > 0 {
@@ -511,6 +627,27 @@ func runRefineryStatusLine(t *tmux.Tmux, rigName string) error {
 
 	fmt.Print(strings.Join(parts, " | ") + " |")
 	return nil
+}
+
+// isSessionWorking detects if a Claude Code session is actively working.
+// Returns true if the ✻ symbol is visible in the pane (indicates Claude is processing).
+// Returns false for idle sessions (showing ❯ prompt) or if state cannot be determined.
+func isSessionWorking(t *tmux.Tmux, session string) bool {
+	// Capture last few lines of the pane
+	lines, err := t.CapturePaneLines(session, 5)
+	if err != nil || len(lines) == 0 {
+		return false
+	}
+
+	// Check all captured lines for the working indicator
+	// ✻ appears in Claude's status line when actively processing
+	for _, line := range lines {
+		if strings.Contains(line, "✻") {
+			return true
+		}
+	}
+
+	return false
 }
 
 // getUnreadMailCount returns unread mail count for an identity.

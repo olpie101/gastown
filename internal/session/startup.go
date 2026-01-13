@@ -62,6 +62,32 @@ func FormatStartupNudge(cfg StartupNudgeConfig) string {
 	}
 
 	// Build the beacon: [GAS TOWN] recipient <- sender • timestamp • topic
-	return fmt.Sprintf("[GAS TOWN] %s <- %s • %s • %s",
+	beacon := fmt.Sprintf("[GAS TOWN] %s <- %s • %s • %s",
 		cfg.Recipient, cfg.Sender, timestamp, topic)
+
+	// For handoff and cold-start, add explicit instructions so the agent knows what to do
+	// even if hooks haven't loaded CLAUDE.md yet
+	if cfg.Topic == "handoff" || cfg.Topic == "cold-start" {
+		beacon += "\n\nCheck your hook and mail, then act on the hook if present:\n" +
+			"1. `gt hook` - shows hooked work (if any)\n" +
+			"2. `gt mail inbox` - check for messages\n" +
+			"3. If work is hooked → execute it immediately\n" +
+			"4. If nothing hooked → wait for instructions"
+	}
+
+	// For assigned, work is already on the hook - just tell them to run it
+	// This prevents the "helpful assistant" exploration pattern (see PRIMING.md)
+	if cfg.Topic == "assigned" {
+		beacon += "\n\nWork is on your hook. Run `gt hook` now and begin immediately."
+	}
+
+	// For start/restart, add fallback instructions in case SessionStart hook fails
+	// to inject context via gt prime. This prevents the "No recent activity" state
+	// where agents sit idle because they received only metadata, no instructions.
+	// See: gt-uoc64 (crew workers starting without proper context injection)
+	if cfg.Topic == "start" || cfg.Topic == "restart" {
+		beacon += "\n\nRun `gt prime` now for full context, then check your hook and mail."
+	}
+
+	return beacon
 }

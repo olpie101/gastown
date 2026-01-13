@@ -32,6 +32,7 @@ gt
 # Runtime state
 state.json
 .runtime/
+/logs
 
 # Beads runtime state (not tracked)
 # Formulas ARE tracked for `go install @latest` - see bottom of file
@@ -42,6 +43,8 @@ state.json
 .beads/mq/
 .beads/last-touched
 .beads/daemon-*.log.gz
+.beads/.sync.lock
+.beads/sync_base.jsonl
 .beads-wisp/
 
 # Clone-specific CLAUDE.md (regenerated locally per clone)

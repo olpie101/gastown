@@ -25,6 +25,8 @@ func TestFormatStartupNudge(t *testing.T) {
 				"gastown/crew/gus",
 				"<- deacon",
 				"assigned:gt-abc12",
+				"Work is on your hook", // assigned includes actionable instructions
+				"gt hook",
 			},
 		},
 		{
@@ -39,6 +41,9 @@ func TestFormatStartupNudge(t *testing.T) {
 				"deacon",
 				"<- mayor",
 				"cold-start",
+				"Check your hook and mail", // cold-start includes explicit instructions (like handoff)
+				"gt hook",
+				"gt mail inbox",
 			},
 			// No wantNot - timestamp contains ":"
 		},
@@ -54,6 +59,9 @@ func TestFormatStartupNudge(t *testing.T) {
 				"gastown/witness",
 				"<- self",
 				"handoff",
+				"Check your hook and mail", // handoff includes explicit instructions
+				"gt hook",
+				"gt mail inbox",
 			},
 		},
 		{
@@ -79,6 +87,35 @@ func TestFormatStartupNudge(t *testing.T) {
 			wantSub: []string{
 				"[GAS TOWN]",
 				"ready",
+			},
+		},
+		{
+			name: "start includes fallback instructions",
+			cfg: StartupNudgeConfig{
+				Recipient: "beads/crew/fang",
+				Sender:    "human",
+				Topic:     "start",
+			},
+			wantSub: []string{
+				"[GAS TOWN]",
+				"beads/crew/fang",
+				"<- human",
+				"start",
+				"gt prime", // fallback instruction for when SessionStart hook fails
+			},
+		},
+		{
+			name: "restart includes fallback instructions",
+			cfg: StartupNudgeConfig{
+				Recipient: "gastown/crew/george",
+				Sender:    "human",
+				Topic:     "restart",
+			},
+			wantSub: []string{
+				"[GAS TOWN]",
+				"gastown/crew/george",
+				"restart",
+				"gt prime", // fallback instruction for when SessionStart hook fails
 			},
 		},
 	}

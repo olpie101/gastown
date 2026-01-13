@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/steveyegge/gastown/internal/beads"
 	"github.com/steveyegge/gastown/internal/config"
 	"github.com/steveyegge/gastown/internal/tmux"
 )
@@ -22,14 +23,11 @@ import (
 // to return true when only Boot is running.
 const SessionName = "gt-boot"
 
-// MarkerFileName is the file that indicates Boot is currently running.
+// MarkerFileName is the lock file for Boot startup coordination.
 const MarkerFileName = ".boot-running"
 
 // StatusFileName stores Boot's last execution status.
 const StatusFileName = ".boot-status.json"
-
-// DefaultMarkerTTL is how long a marker is considered valid before it's stale.
-const DefaultMarkerTTL = 5 * time.Minute
 
 // Status represents Boot's execution status.
 type Status struct {
@@ -77,22 +75,9 @@ func (b *Boot) statusPath() string {
 }
 
 // IsRunning checks if Boot is currently running.
-// Returns true if marker exists and isn't stale, false otherwise.
+// Queries tmux directly for observable reality (ZFC principle).
 func (b *Boot) IsRunning() bool {
-	info, err := os.Stat(b.markerPath())
-	if err != nil {
-		return false
-	}
-
-	// Check if marker is stale (older than TTL)
-	age := time.Since(info.ModTime())
-	if age > DefaultMarkerTTL {
-		// Stale marker - clean it up
-		_ = os.Remove(b.markerPath())
-		return false
-	}
-
-	return true
+	return b.IsSessionAlive()
 }
 
 // IsSessionAlive checks if the Boot tmux session exists.
@@ -105,7 +90,7 @@ func (b *Boot) IsSessionAlive() bool {
 // Returns error if Boot is already running.
 func (b *Boot) AcquireLock() error {
 	if b.IsRunning() {
-		return fmt.Errorf("boot is already running (marker exists)")
+		return fmt.Errorf("boot is already running (session exists)")
 	}
 
 	if err := b.EnsureDir(); err != nil {
@@ -185,25 +170,25 @@ func (b *Boot) spawnTmux() error {
 		return fmt.Errorf("ensuring boot dir: %w", err)
 	}
 
-	// Create new session in boot directory (not deacon dir) so Claude reads Boot's CLAUDE.md
-	if err := b.tmux.NewSession(SessionName, b.bootDir); err != nil {
+	// Build startup command first
+	// The "gt boot triage" prompt tells Boot to immediately start triage (GUPP principle)
+	startCmd := config.BuildAgentStartupCommand("boot", "deacon-boot", "", "gt boot triage")
+
+	// Create session with command directly to avoid send-keys race condition.
+	// See: https://github.com/anthropics/gastown/issues/280
+	if err := b.tmux.NewSessionWithCommand(SessionName, b.bootDir, startCmd); err != nil {
 		return fmt.Errorf("creating boot session: %w", err)
 	}
 
-	// Set environment
-	_ = b.tmux.SetEnvironment(SessionName, "GT_ROLE", "boot")
-	_ = b.tmux.SetEnvironment(SessionName, "BD_ACTOR", "deacon-boot")
-
-	// Launch Claude with environment exported inline and initial triage prompt
-	// The "gt boot triage" prompt tells Boot to immediately start triage (GUPP principle)
-	startCmd := config.BuildAgentStartupCommand("boot", "deacon-boot", "", "gt boot triage")
-	// Wait for shell to be ready before sending keys (prevents "can't find pane" under load)
-	if err := b.tmux.WaitForShellReady(SessionName, 5*time.Second); err != nil {
-		_ = b.tmux.KillSession(SessionName)
-		return fmt.Errorf("waiting for shell: %w", err)
-	}
-	if err := b.tmux.SendKeys(SessionName, startCmd); err != nil {
-		return fmt.Errorf("sending startup command: %w", err)
+	// Set environment variables (non-fatal: session works without these)
+	// Use centralized AgentEnv for consistency across all role startup paths
+	envVars := config.AgentEnv(config.AgentEnvConfig{
+		Role:     "boot",
+		TownRoot: b.townRoot,
+		BeadsDir: beads.ResolveBeadsDir(b.townRoot),
+	})
+	for k, v := range envVars {
+		_ = b.tmux.SetEnvironment(SessionName, k, v)
 	}
 
 	return nil
@@ -216,11 +201,15 @@ func (b *Boot) spawnDegraded() error {
 	// This performs the triage logic without a full Claude session
 	cmd := exec.Command("gt", "boot", "triage", "--degraded")
 	cmd.Dir = b.deaconDir
-	cmd.Env = append(os.Environ(),
-		"GT_ROLE=boot",
-		"BD_ACTOR=deacon-boot",
-		"GT_DEGRADED=true",
-	)
+
+	// Use centralized AgentEnv for consistency with tmux mode
+	envVars := config.AgentEnv(config.AgentEnvConfig{
+		Role:     "boot",
+		TownRoot: b.townRoot,
+		BeadsDir: beads.ResolveBeadsDir(b.townRoot),
+	})
+	cmd.Env = config.EnvForExecCommand(envVars)
+	cmd.Env = append(cmd.Env, "GT_DEGRADED=true")
 
 	// Run async - don't wait for completion
 	return cmd.Start()
