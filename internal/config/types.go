@@ -49,6 +49,13 @@ type TownSettings struct {
 	// Values override or extend the built-in presets.
 	// Example: {"gemini": {"command": "/custom/path/to/gemini"}}
 	Agents map[string]*RuntimeConfig `json:"agents,omitempty"`
+
+	// RoleAgents maps role names to agent aliases for per-role model selection.
+	// Keys are role names: "mayor", "deacon", "witness", "refinery", "polecat", "crew".
+	// Values are agent names (built-in presets or custom agents defined in Agents).
+	// This allows cost optimization by using different models for different roles.
+	// Example: {"mayor": "claude-opus", "witness": "claude-haiku", "polecat": "claude-sonnet"}
+	RoleAgents map[string]string `json:"role_agents,omitempty"`
 }
 
 // NewTownSettings creates a new TownSettings with defaults.
@@ -58,6 +65,7 @@ func NewTownSettings() *TownSettings {
 		Version:      CurrentTownSettingsVersion,
 		DefaultAgent: "claude",
 		Agents:       make(map[string]*RuntimeConfig),
+		RoleAgents:   make(map[string]string),
 	}
 }
 
@@ -180,6 +188,13 @@ type RigConfig struct {
 	Beads     *BeadsConfig `json:"beads,omitempty"`
 }
 
+// WorkflowConfig represents workflow settings for a rig.
+type WorkflowConfig struct {
+	// DefaultFormula is the formula to use when `gt formula run` is called without arguments.
+	// If empty, no default is set and a formula name must be provided.
+	DefaultFormula string `json:"default_formula,omitempty"`
+}
+
 // RigSettings represents per-rig behavioral configuration (settings/config.json).
 type RigSettings struct {
 	Type       string            `json:"type"`                  // "rig-settings"
@@ -188,6 +203,7 @@ type RigSettings struct {
 	Theme      *ThemeConfig      `json:"theme,omitempty"`       // tmux theme settings
 	Namepool   *NamepoolConfig   `json:"namepool,omitempty"`    // polecat name pool settings
 	Crew       *CrewConfig       `json:"crew,omitempty"`        // crew startup settings
+	Workflow   *WorkflowConfig   `json:"workflow,omitempty"`    // workflow settings
 	Runtime    *RuntimeConfig    `json:"runtime,omitempty"`     // LLM runtime settings (deprecated: use Agent)
 
 	// Agent selects which agent preset to use for this rig.
@@ -201,6 +217,13 @@ type RigSettings struct {
 	// Similar to TownSettings.Agents but applies to this rig only.
 	// Allows per-rig custom agents for polecats and crew members.
 	Agents map[string]*RuntimeConfig `json:"agents,omitempty"`
+
+	// RoleAgents maps role names to agent aliases for per-role model selection.
+	// Keys are role names: "witness", "refinery", "polecat", "crew".
+	// Values are agent names (built-in presets or custom agents).
+	// Overrides TownSettings.RoleAgents for this specific rig.
+	// Example: {"witness": "claude-haiku", "polecat": "claude-sonnet"}
+	RoleAgents map[string]string `json:"role_agents,omitempty"`
 }
 
 // CrewConfig represents crew workspace settings for a rig.
@@ -763,5 +786,101 @@ func NewMessagingConfig() *MessagingConfig {
 		Queues:        make(map[string]QueueConfig),
 		Announces:     make(map[string]AnnounceConfig),
 		NudgeChannels: make(map[string][]string),
+	}
+}
+
+// EscalationConfig represents escalation routing configuration (settings/escalation.json).
+// This defines severity-based routing for escalations to different channels.
+type EscalationConfig struct {
+	Type    string `json:"type"`    // "escalation"
+	Version int    `json:"version"` // schema version
+
+	// Routes maps severity levels to action lists.
+	// Actions are executed in order for each escalation.
+	// Action formats:
+	//   - "bead"        → Create escalation bead (always first, implicit)
+	//   - "mail:<target>" → Send gt mail to target (e.g., "mail:mayor")
+	//   - "email:human" → Send email to contacts.human_email
+	//   - "sms:human"   → Send SMS to contacts.human_sms
+	//   - "slack"       → Post to contacts.slack_webhook
+	//   - "log"         → Write to escalation log file
+	Routes map[string][]string `json:"routes"`
+
+	// Contacts contains contact information for external notification actions.
+	Contacts EscalationContacts `json:"contacts"`
+
+	// StaleThreshold is how long before an unacknowledged escalation
+	// is considered stale and gets re-escalated.
+	// Format: Go duration string (e.g., "4h", "30m", "24h")
+	// Default: "4h"
+	StaleThreshold string `json:"stale_threshold,omitempty"`
+
+	// MaxReescalations limits how many times an escalation can be
+	// re-escalated. Default: 2 (low→medium→high, then stops)
+	MaxReescalations int `json:"max_reescalations,omitempty"`
+}
+
+// EscalationContacts contains contact information for external notification channels.
+type EscalationContacts struct {
+	HumanEmail   string `json:"human_email,omitempty"`   // email address for email:human action
+	HumanSMS     string `json:"human_sms,omitempty"`     // phone number for sms:human action
+	SlackWebhook string `json:"slack_webhook,omitempty"` // webhook URL for slack action
+}
+
+// CurrentEscalationVersion is the current schema version for EscalationConfig.
+const CurrentEscalationVersion = 1
+
+// Escalation severity level constants.
+const (
+	SeverityCritical = "critical" // P0: immediate attention required
+	SeverityHigh     = "high"     // P1: urgent, needs attention soon
+	SeverityMedium   = "medium"   // P2: standard escalation (default)
+	SeverityLow      = "low"      // P3: informational, can wait
+)
+
+// ValidSeverities returns the list of valid severity levels in order of priority.
+func ValidSeverities() []string {
+	return []string{SeverityLow, SeverityMedium, SeverityHigh, SeverityCritical}
+}
+
+// IsValidSeverity checks if a severity level is valid.
+func IsValidSeverity(severity string) bool {
+	switch severity {
+	case SeverityLow, SeverityMedium, SeverityHigh, SeverityCritical:
+		return true
+	default:
+		return false
+	}
+}
+
+// NextSeverity returns the next higher severity level for re-escalation.
+// Returns the same level if already at critical.
+func NextSeverity(severity string) string {
+	switch severity {
+	case SeverityLow:
+		return SeverityMedium
+	case SeverityMedium:
+		return SeverityHigh
+	case SeverityHigh:
+		return SeverityCritical
+	default:
+		return SeverityCritical
+	}
+}
+
+// NewEscalationConfig creates a new EscalationConfig with sensible defaults.
+func NewEscalationConfig() *EscalationConfig {
+	return &EscalationConfig{
+		Type:    "escalation",
+		Version: CurrentEscalationVersion,
+		Routes: map[string][]string{
+			SeverityLow:      {"bead"},
+			SeverityMedium:   {"bead", "mail:mayor"},
+			SeverityHigh:     {"bead", "mail:mayor", "email:human"},
+			SeverityCritical: {"bead", "mail:mayor", "email:human", "sms:human"},
+		},
+		Contacts:         EscalationContacts{},
+		StaleThreshold:   "4h",
+		MaxReescalations: 2,
 	}
 }

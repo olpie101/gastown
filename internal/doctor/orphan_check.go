@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/steveyegge/gastown/internal/events"
 	"github.com/steveyegge/gastown/internal/session"
 	"github.com/steveyegge/gastown/internal/tmux"
 )
@@ -16,7 +17,21 @@ import (
 // the expected Gas Town session naming patterns.
 type OrphanSessionCheck struct {
 	FixableCheck
+	sessionLister  SessionLister
 	orphanSessions []string // Cached during Run for use in Fix
+}
+
+// SessionLister abstracts tmux session listing for testing.
+type SessionLister interface {
+	ListSessions() ([]string, error)
+}
+
+type realSessionLister struct {
+	t *tmux.Tmux
+}
+
+func (r *realSessionLister) ListSessions() ([]string, error) {
+	return r.t.ListSessions()
 }
 
 // NewOrphanSessionCheck creates a new orphan session check.
@@ -26,16 +41,27 @@ func NewOrphanSessionCheck() *OrphanSessionCheck {
 			BaseCheck: BaseCheck{
 				CheckName:        "orphan-sessions",
 				CheckDescription: "Detect orphaned tmux sessions",
+				CheckCategory:    CategoryCleanup,
 			},
 		},
 	}
 }
 
+// NewOrphanSessionCheckWithSessionLister creates a check with a custom session lister (for testing).
+func NewOrphanSessionCheckWithSessionLister(lister SessionLister) *OrphanSessionCheck {
+	check := NewOrphanSessionCheck()
+	check.sessionLister = lister
+	return check
+}
+
 // Run checks for orphaned Gas Town tmux sessions.
 func (c *OrphanSessionCheck) Run(ctx *CheckContext) *CheckResult {
-	t := tmux.NewTmux()
+	lister := c.sessionLister
+	if lister == nil {
+		lister = &realSessionLister{t: tmux.NewTmux()}
+	}
 
-	sessions, err := t.ListSessions()
+	sessions, err := lister.ListSessions()
 	if err != nil {
 		return &CheckResult{
 			Name:    c.Name(),
@@ -115,13 +141,16 @@ func (c *OrphanSessionCheck) Fix(ctx *CheckContext) error {
 	t := tmux.NewTmux()
 	var lastErr error
 
-	for _, session := range c.orphanSessions {
+	for _, sess := range c.orphanSessions {
 		// SAFEGUARD: Never auto-kill crew sessions.
 		// Crew workers are human-managed and require explicit action.
-		if isCrewSession(session) {
+		if isCrewSession(sess) {
 			continue
 		}
-		if err := t.KillSession(session); err != nil {
+		// Log pre-death event for crash investigation (before killing)
+		_ = events.LogFeed(events.TypeSessionDeath, sess,
+			events.SessionDeathPayload(sess, "unknown", "orphan cleanup", "gt doctor"))
+		if err := t.KillSession(sess); err != nil {
 			lastErr = err
 		}
 	}
@@ -240,6 +269,7 @@ func NewOrphanProcessCheck() *OrphanProcessCheck {
 		BaseCheck: BaseCheck{
 			CheckName:        "orphan-processes",
 			CheckDescription: "Detect runtime processes outside tmux",
+			CheckCategory:    CategoryCleanup,
 		},
 	}
 }

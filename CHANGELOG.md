@@ -7,6 +7,179 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.6] - 2026-01-12
+
+### Added
+
+#### Escalation System
+- **Unified escalation system** - Complete escalation implementation with severity levels, routing, and tracking (gt-i9r20)
+- **Escalation config schema alignment** - Configuration now matches design doc specifications
+
+#### Agent Identity & Management
+- **`gt polecat identity` subcommand group** - Agent bead management commands for polecat lifecycle
+- **AGENTS.md fallback copy** - Polecats automatically copy AGENTS.md from mayor/rig for context bootstrapping
+- **`--debug` flag for `gt crew at`** - Debug mode for crew attachment troubleshooting
+- **Boot role detection in priming** - Proper context injection for boot role agents (#370)
+
+#### Statusline Improvements
+- **Per-agent-type health tracking** - Statusline now shows health status per agent type (#344)
+- **Visual rig grouping** - Rigs sorted by activity with visual grouping in tmux statusline (#337)
+
+#### Mail & Communication
+- **`gt mail show` alias** - Alternative command for reading mail (#340)
+
+#### Developer Experience
+- **`gt stale` command** - Check for stale binaries and version mismatches
+
+### Changed
+
+- **Refactored statusline** - Merged session loops and removed dead code for cleaner implementation
+- **Refactored sling.go** - Split 1560-line file into 7 focused modules for maintainability
+- **Magic numbers extracted** - Suggest package now uses named constants (#353)
+
+### Fixed
+
+#### Configuration & Environment
+- **Empty GT_ROOT/BEADS_DIR not exported** - AgentEnv no longer exports empty environment variables (#385)
+- **Inherited BEADS_DIR prefix mismatch** - Prevent inherited BEADS_DIR from causing prefix mismatches (#321)
+
+#### Beads & Routing
+- **routes.jsonl corruption prevention** - Added protection against routes.jsonl corruption with doctor check for rig-level issues (#377)
+- **Tracked beads init after clone** - Initialize beads database for tracked beads after git clone (#376)
+- **Rig root from BeadsPath()** - Correctly return rig root to respect redirect system
+
+#### Sling & Formula
+- **Feature and issue vars in formula-on-bead mode** - Pass both variables correctly (#382)
+- **Crew member shorthand resolution** - Resolve crew members correctly with shorthand paths
+- **Removed obsolete --naked flag** - Cleanup of deprecated sling option
+
+#### Doctor & Diagnostics
+- **Role beads check with shared definitions** - Doctor now validates role beads using shared role definitions (#378)
+- **Filter bd "Note:" messages** - Custom types check no longer confused by bd informational output (#381)
+
+#### Installation & Setup
+- **gt:role label on role beads** - Role beads now properly labeled during creation (#383)
+- **Fetch origin after refspec config** - Bare clones now fetch after configuring refspec (#384)
+- **Allow --wrappers in existing town** - No longer recreates HQ unnecessarily (#366)
+
+#### Session & Lifecycle
+- **Fallback instructions in start/restart beacons** - Session beacons now include fallback instructions
+- **Handoff recognizes polecat session pattern** - Correctly handles gt-<rig>-<name> session names (#373)
+- **gt done resilient to missing agent beads** - No longer fails when agent beads don't exist
+- **MR beads as ephemeral wisps** - Create MR beads as ephemeral wisps for proper cleanup
+- **Auto-detect cleanup status** - Prevents premature polecat nuke (#361)
+- **Delete remote polecat branches after merge** - Refinery cleans up remote branches (#369)
+
+#### Costs & Events
+- **Query all beads locations for session events** - Cost tracking finds events across locations (#374)
+
+#### Linting & Quality
+- **errcheck and unparam violations resolved** - Fixed linting errors
+- **NudgeSession for all agent notifications** - Mail now uses consistent notification method
+
+### Documentation
+
+- **Polecat three-state model** - Clarified working/stalled/zombie states
+- **Name pool vs polecat pool** - Clarified misconception about pools
+- **Plugin and escalation system designs** - Added design documentation
+- **Documentation reorganization** - Concepts, design, and examples structure
+- **gt prime clarification** - Clarified that gt prime is context recovery, not session start (GH #308)
+- **Formula package documentation** - Comprehensive package docs
+- **Various godoc additions** - GenerateMRIDWithTime, isAutonomousRole, formatInt, nil sentinel pattern
+- **Beads issue ID format** - Clarified format in README (gt-uzx2c)
+- **Stale polecat identity description** - Fixed outdated documentation
+
+### Tests
+
+- **AGENTS.md worktree tests** - Test coverage for AGENTS.md in worktrees
+- **Comprehensive test coverage** - Added tests for 5 packages (#351)
+- **Sling test for bd empty output** - Fixed test for empty output handling
+
+### Deprecated
+
+- **`gt polecat add`** - Added migration warning for deprecated command
+
+### Contributors
+
+Thanks to all contributors for this release:
+- @JeremyKalmus - Various contributions (#364)
+- @boshu2 - Formula package documentation (#343), PR documentation (#352)
+- @sauerdaniel - Polecat mail notification fix (#347)
+- @abhijit360 - Assign model to role (#368)
+- @julianknutsen - Beads path fix (#334)
+
+## [0.2.5] - 2026-01-11
+
+### Added
+- **`gt mail mark-read`** - Mark messages as read without opening them (desire path)
+- **`gt down --polecats`** - Shut down polecats without affecting other components
+- **Self-cleaning polecat model** - Polecats self-nuke on completion, witness tracks leases
+- **`gt prime --state` validation** - Flag exclusivity checks for cleaner CLI
+
+### Changed
+- **Removed `gt stop`** - Use `gt down --polecats` instead (cleaner semantics)
+- **Policy-neutral templates** - crew.md.tmpl checks remote origin for PR policy
+- **Refactored prime.go** - Split 1833-line file into logical modules
+
+### Fixed
+- **Polecat re-spawn** - CreateOrReopenAgentBead handles polecat lifecycle correctly (#333)
+- **Vim mode compatibility** - tmux sends Escape before Enter for vim users
+- **Worktree default branch** - Uses rig's configured default branch (#325)
+- **Agent bead type** - Sets --type=agent when creating agent beads
+- **Bootstrap priming** - Reduced AGENTS.md to bootstrap pointer, fixed CLAUDE.md templates
+
+### Documentation
+- Updated witness help text for self-cleaning model
+- Updated daemon comments for self-cleaning model
+- Policy-aware PR guidance in crew template
+
+## [0.2.4] - 2026-01-10
+
+Priming subsystem overhaul and Zero Framework Cognition (ZFC) improvements.
+
+### Added
+
+#### Priming Subsystem
+- **PRIME.md provisioning** - Auto-provision PRIME.md at rig level so all workers inherit Gas Town context (GUPP, hooks, propulsion) (#hq-5z76w)
+- **Post-handoff detection** - `gt prime` detects handoff marker and outputs "HANDOFF COMPLETE" warning to prevent handoff loop bug (#hq-ukjrr)
+- **Priming health checks** - `gt doctor` validates priming subsystem: SessionStart hook, gt prime command, PRIME.md presence, CLAUDE.md size (#hq-5scnt)
+- **`gt prime --dry-run`** - Preview priming without side effects
+- **`gt prime --state`** - Output session state (normal, post-handoff, crash-recovery, autonomous)
+- **`gt prime --explain`** - Add [EXPLAIN] tags for debugging priming decisions
+
+#### Formula & Configuration
+- **Rig-level default formulas** - Configure default formula at rig level (#297)
+- **Witness --agent/--env overrides** - Override agent and environment variables for witness (#293, #294)
+
+#### Developer Experience
+- **UX system import** - Comprehensive UX system from beads (#311)
+- **Explicit handoff instructions** - Clearer nudge message for handoff recipients
+
+### Fixed
+
+#### Zero Framework Cognition (ZFC)
+- **Query tmux directly** - Remove marker TTL, query tmux for agent state
+- **Remove PID-based detection** - Agent liveness from tmux, not PIDs
+- **Agent-controlled thresholds** - Stuck detection moved to agent config
+- **Remove pending.json tracking** - Eliminated anti-pattern
+- **Derive state from files** - ZFC state from filesystem, not memory cache
+- **Remove Go-side computation** - No stderr parsing violations
+
+#### Hooks & Beads
+- **Cross-level hook visibility** - Hooked beads visible to mayor/deacon (#aeb4c0d)
+- **Warn on closed hooked bead** - Alert when hooked bead already closed (#2f50a59)
+- **Correct agent bead ID format** - Fix bd create flags for agent beads (#c4fcdd8)
+
+#### Formula
+- **rigPath fallback** - Set rigPath when falling back to gastown default (#afb944f)
+
+#### Doctor
+- **Full AgentEnv for env-vars check** - Use complete environment for validation (#ce231a3)
+
+### Changed
+
+- **Refactored beads/mail modules** - Split large files into focused modules for maintainability
+
 ## [0.2.3] - 2026-01-09
 
 Worker safety release - prevents accidental termination of active agents.

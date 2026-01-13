@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/steveyegge/gastown/internal/config"
+	"github.com/steveyegge/gastown/internal/constants"
 )
 
 // RigIsGitRepoCheck verifies the rig has a valid mayor/rig git clone.
@@ -24,6 +25,7 @@ func NewRigIsGitRepoCheck() *RigIsGitRepoCheck {
 		BaseCheck: BaseCheck{
 			CheckName:        "rig-is-git-repo",
 			CheckDescription: "Verify rig has a valid mayor/rig git clone",
+			CheckCategory:    CategoryRig,
 		},
 	}
 }
@@ -98,6 +100,7 @@ func NewGitExcludeConfiguredCheck() *GitExcludeConfiguredCheck {
 			BaseCheck: BaseCheck{
 				CheckName:        "git-exclude-configured",
 				CheckDescription: "Check .git/info/exclude has Gas Town directories",
+				CheckCategory:    CategoryRig,
 			},
 		},
 	}
@@ -248,6 +251,7 @@ func NewHooksPathConfiguredCheck() *HooksPathConfiguredCheck {
 			BaseCheck: BaseCheck{
 				CheckName:        "hooks-path-configured",
 				CheckDescription: "Check core.hooksPath is set for all clones",
+				CheckCategory:    CategoryRig,
 			},
 		},
 	}
@@ -370,6 +374,7 @@ func NewWitnessExistsCheck() *WitnessExistsCheck {
 			BaseCheck: BaseCheck{
 				CheckName:        "witness-exists",
 				CheckDescription: "Verify witness/ directory structure exists",
+				CheckCategory:    CategoryRig,
 			},
 		},
 	}
@@ -476,6 +481,7 @@ func NewRefineryExistsCheck() *RefineryExistsCheck {
 			BaseCheck: BaseCheck{
 				CheckName:        "refinery-exists",
 				CheckDescription: "Verify refinery/ directory structure exists",
+				CheckCategory:    CategoryRig,
 			},
 		},
 	}
@@ -581,6 +587,7 @@ func NewMayorCloneExistsCheck() *MayorCloneExistsCheck {
 			BaseCheck: BaseCheck{
 				CheckName:        "mayor-clone-exists",
 				CheckDescription: "Verify mayor/rig/ git clone exists",
+				CheckCategory:    CategoryRig,
 			},
 		},
 	}
@@ -663,6 +670,7 @@ func NewPolecatClonesValidCheck() *PolecatClonesValidCheck {
 		BaseCheck: BaseCheck{
 			CheckName:        "polecat-clones-valid",
 			CheckDescription: "Verify polecat directories are valid git clones",
+			CheckCategory:    CategoryRig,
 		},
 	}
 }
@@ -741,8 +749,8 @@ func (c *PolecatClonesValidCheck) Run(ctx *CheckContext) *CheckResult {
 		branchOutput, err := cmd.Output()
 		if err == nil {
 			branch := strings.TrimSpace(string(branchOutput))
-			if !strings.HasPrefix(branch, "polecat/") {
-				warnings = append(warnings, fmt.Sprintf("%s: on branch '%s' (expected polecat/*)", polecatName, branch))
+			if !strings.HasPrefix(branch, constants.BranchPolecatPrefix) {
+				warnings = append(warnings, fmt.Sprintf("%s: on branch '%s' (expected %s*)", polecatName, branch, constants.BranchPolecatPrefix))
 			}
 		}
 
@@ -797,6 +805,7 @@ func NewBeadsConfigValidCheck() *BeadsConfigValidCheck {
 			BaseCheck: BaseCheck{
 				CheckName:        "beads-config-valid",
 				CheckDescription: "Verify beads configuration if .beads/ exists",
+				CheckCategory:    CategoryRig,
 			},
 		},
 	}
@@ -892,6 +901,7 @@ func NewBeadsRedirectCheck() *BeadsRedirectCheck {
 			BaseCheck: BaseCheck{
 				CheckName:        "beads-redirect",
 				CheckDescription: "Verify rig-level beads redirect for tracked beads",
+				CheckCategory:    CategoryRig,
 			},
 		},
 	}
@@ -1046,7 +1056,7 @@ func (c *BeadsRedirectCheck) Fix(ctx *CheckContext) error {
 		} else {
 			_ = output // bd init succeeded
 			// Configure custom types for Gas Town (beads v0.46.0+)
-			configCmd := exec.Command("bd", "config", "set", "types.custom", "agent,role,rig,convoy,event")
+			configCmd := exec.Command("bd", "config", "set", "types.custom", constants.BeadsCustomTypes)
 			configCmd.Dir = rigPath
 			_, _ = configCmd.CombinedOutput() // Ignore errors - older beads don't need this
 		}
@@ -1104,6 +1114,7 @@ func NewBareRepoRefspecCheck() *BareRepoRefspecCheck {
 			BaseCheck: BaseCheck{
 				CheckName:        "bare-repo-refspec",
 				CheckDescription: "Verify bare repo has correct refspec for worktrees",
+				CheckCategory:    CategoryRig,
 			},
 		},
 	}
