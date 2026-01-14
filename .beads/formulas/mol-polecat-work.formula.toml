@@ -40,7 +40,7 @@ beads created from it. Use `bd ready` to find them - do NOT read this file direc
 | Context filling | Use gt handoff to cycle to fresh session |
 | Unsure what to do | Mail Witness, don't guess |"""
 formula = "mol-polecat-work"
-version = 4
+version = 5
 
 [[steps]]
 id = "load-context"
@@ -54,7 +54,13 @@ gt prime                    # Load role context
 bd prime                    # Load beads context
 ```
 
-**2. Check your hook:**
+**2. Detect the default branch (used throughout this workflow):**
+```bash
+DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD --short | sed 's,.*/,,')
+echo "Default branch: $DEFAULT_BRANCH"
+```
+
+**3. Check your hook:**
 ```bash
 gt hook               # Shows your pinned molecule and hook_bead
 ```
@@ -64,19 +70,19 @@ The hook_bead is your assigned issue. Read it carefully:
 bd show {{issue}}           # Full issue details
 ```
 
-**3. Check inbox for additional context:**
+**4. Check inbox for additional context:**
 ```bash
 gt mail inbox
 # Read any HANDOFF or assignment messages
 ```
 
-**4. Understand the requirements:**
+**5. Understand the requirements:**
 - What exactly needs to be done?
 - What files are likely involved?
 - Are there dependencies or blockers?
 - What does "done" look like?
 
-**5. Verify you can proceed:**
+**6. Verify you can proceed:**
 - No unresolved blockers on the issue
 - You understand what to do
 - Required resources are available
@@ -128,7 +134,6 @@ git checkout -- .
 **4. Sync with default branch:**
 ```bash
 git fetch origin
-DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD --short | sed 's,.*/,,')
 git rebase origin/$DEFAULT_BRANCH      # Get latest, rebase your branch
 ```
 
@@ -152,7 +157,6 @@ let someone else's mess consume your entire mission.
 **1. Check tests on default branch:**
 ```bash
 git stash                   # Save your branch state
-DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD --short | sed 's,.*/,,')
 git checkout origin/$DEFAULT_BRANCH
 go test ./...               # Or appropriate test command
 ```
@@ -177,7 +181,6 @@ Make a judgment call:
 **Quick fix path:**
 ```bash
 # Fix the issue
-DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD --short | sed 's,.*/,,')
 git add <files>
 git commit -m "fix: <description> (pre-existing failure)"
 git push origin $DEFAULT_BRANCH
@@ -263,7 +266,6 @@ Review your own changes before running tests.
 
 **1. Review the diff:**
 ```bash
-DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD --short | sed 's,.*/,,')
 git diff origin/$DEFAULT_BRANCH...HEAD     # All changes vs default branch
 git log --oneline origin/$DEFAULT_BRANCH..HEAD  # All commits
 ```
@@ -283,7 +285,6 @@ Don't just note them - fix them now. Amend or add commits as needed.
 
 **4. Verify no unintended changes:**
 ```bash
-DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD --short | sed 's,.*/,,')
 git diff --stat origin/$DEFAULT_BRANCH...HEAD
 # Only files relevant to {{issue}} should appear
 ```
@@ -377,7 +378,6 @@ git push -u origin $(git branch --show-current)
 
 **5. Verify nothing left behind:**
 ```bash
-DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD --short | sed 's,.*/,,')
 git status                  # Clean
 git stash list              # Empty
 git log origin/$DEFAULT_BRANCH..HEAD   # Your commits
