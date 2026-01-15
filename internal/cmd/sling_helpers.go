@@ -478,6 +478,13 @@ func attachPolecatWorkMolecule(targetAgent, hookWorkDir, townRoot string) error 
 		return fmt.Errorf("cooking mol-polecat-work formula: %w", err)
 	}
 
+	// Pin the agent bead so AttachMolecule succeeds
+	// AttachMolecule requires status=pinned, but agent beads are created with status=open
+	pinStatus := beads.StatusPinned
+	if err := b.Update(agentBeadID, beads.UpdateOptions{Status: &pinStatus}); err != nil {
+		return fmt.Errorf("pinning agent bead %s: %w", agentBeadID, err)
+	}
+
 	// Attach the molecule to the polecat's agent bead
 	// The molecule ID is the formula name "mol-polecat-work"
 	moleculeID := "mol-polecat-work"
