@@ -92,6 +92,15 @@ func (m *Manager) Start(agentOverride string) error {
 		return fmt.Errorf("creating tmux session: %w", err)
 	}
 
+	// Write fresh heartbeat to prevent race with checkDeaconHeartbeat.
+	// Without this, the daemon's heartbeat check runs on the same tick and
+	// sees the OLD stale heartbeat, killing the just-started session.
+	// The deacon will overwrite this with real patrol data on first cycle.
+	_ = WriteHeartbeat(m.townRoot, &Heartbeat{
+		Timestamp: time.Now(),
+		Cycle:     0,
+	})
+
 	// Set environment variables (non-fatal: session works without these)
 	// Use centralized AgentEnv for consistency across all role startup paths
 	envVars := config.AgentEnv(config.AgentEnvConfig{
