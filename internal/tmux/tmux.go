@@ -822,7 +822,18 @@ Run: gt mail inbox
 //
 // If expectedPaneCommands is non-empty, the pane's current command must match one of them.
 // If expectedPaneCommands is empty, any non-shell command counts as "agent running".
+//
+// Special case: when checking for "node" only (Claude's expected process name),
+// delegates to IsClaudeRunning which also handles version patterns (e.g., "2.1.7")
+// and child process detection for shell wrappers.
 func (t *Tmux) IsAgentRunning(session string, expectedPaneCommands ...string) bool {
+	// Special case: when checking for Claude (node), use IsClaudeRunning which handles
+	// version patterns and child process detection. This is not infinite recursion because
+	// IsClaudeRunning calls IsAgentRunning with TWO args ("node", "claude"), not one.
+	if len(expectedPaneCommands) == 1 && expectedPaneCommands[0] == "node" {
+		return t.IsClaudeRunning(session)
+	}
+
 	cmd, err := t.GetPaneCommand(session)
 	if err != nil {
 		return false
