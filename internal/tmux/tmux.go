@@ -575,14 +575,21 @@ func (t *Tmux) AcceptBypassPermissionsWarning(session string) error {
 	return nil
 }
 
-// GetPaneCommand returns the current command running in a pane.
+// GetPaneCommand returns the current command running in the first pane of the first window.
 // Returns "bash", "zsh", "claude", "node", etc.
+// Uses session:^ syntax to target the first window regardless of base-index setting.
 func (t *Tmux) GetPaneCommand(session string) (string, error) {
-	out, err := t.run("list-panes", "-t", session, "-F", "#{pane_current_command}")
+	// Target first window with :^ syntax, then take first pane's command
+	out, err := t.run("list-panes", "-t", session+":^", "-F", "#{pane_current_command}")
 	if err != nil {
 		return "", err
 	}
-	return strings.TrimSpace(out), nil
+	// Take first line only (first pane in the window)
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	if len(lines) == 0 || lines[0] == "" {
+		return "", nil
+	}
+	return lines[0], nil
 }
 
 // GetPaneID returns the pane identifier for a session's first pane.
