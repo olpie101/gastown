@@ -33,7 +33,7 @@ Witness                    Refinery                      Git
 After successful merge, Refinery sends MERGED mail back to Witness so it can
 complete cleanup (nuke the polecat worktree)."""
 formula = "mol-refinery-patrol"
-version = 6
+version = 7
 
 [[steps]]
 id = "inbox-check"
@@ -245,19 +245,22 @@ If tests FAILED:
 This is non-negotiable. Never disavow. Never "note and proceed." """
 
 [[steps]]
-id = "merge-push"
-title = "Merge and push to default branch"
+id = "detect-protection"
+title = "Detect branch protection"
 needs = ["handle-failures"]
 description = """
-Merge to default branch. Handles both protected and unprotected branches.
+Determine if default branch is protected before attempting merge.
 
-**Step 1: Detect Branch Protection**
+**CRITICAL**: This check MUST complete before any merge attempt. Do NOT skip this step.
 
+**Step 1: Get repo info**
 ```bash
-# Get repo owner/name
 REPO_INFO=$(gh repo view --json owner,name -q '"\\(.owner.login)/\\(.name)"')
+echo "Repo: $REPO_INFO"
+```
 
-# Check if default branch is protected
+**Step 2: Check protection status**
+```bash
 if gh api "repos/${REPO_INFO}/branches/${DEFAULT_BRANCH}/protection" &>/dev/null; then
     BRANCH_PROTECTED="true"
 else
@@ -266,27 +269,48 @@ fi
 echo "Default branch protection: $BRANCH_PROTECTED"
 ```
 
+**Step 3: Verify detection succeeded**
+- If REPO_INFO is empty or malformed, STOP and investigate
+- If the gh api call fails with non-404 error, STOP and investigate
+- Only proceed when you have a definitive true/false for BRANCH_PROTECTED
+
+Track: BRANCH_PROTECTED value (true/false) for merge-push step.
+
+**Why this is a separate step**: Branch protection determines the ENTIRE merge strategy.
+Getting this wrong leads to push rejections and improvised recovery paths. By making it
+explicit, we ensure the agent commits to a path BEFORE attempting any git operations."""
+
+[[steps]]
+id = "merge-push"
+title = "Merge and push to default branch"
+needs = ["detect-protection"]
+description = """
+Merge to default branch. Path determined by BRANCH_PROTECTED from detect-protection step.
+
+**PREREQUISITE**: BRANCH_PROTECTED must be set from the detect-protection step.
+If BRANCH_PROTECTED is not set, STOP - do not proceed with any merge attempt.
+
 ---
 
 ## UNPROTECTED PATH (BRANCH_PROTECTED=false)
 
 If unprotected, use the direct merge-push workflow:
 
-**Step 2A-1: Merge and Push**
+**Step A-1: Merge and Push**
 ```bash
 git checkout $DEFAULT_BRANCH
 git merge --ff-only temp
 git push origin $DEFAULT_BRANCH
 ```
 
-**Step 2A-2: Send MERGED Notification (REQUIRED)**
+**Step A-2: Send MERGED Notification (REQUIRED)**
 ```bash
 gt mail send <rig>/witness -s "MERGED <polecat-name>" -m "Branch: <branch>
 Issue: <issue-id>
 Merged-At: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 ```
 
-**Step 2A-3: Close MR Bead (REQUIRED)**
+**Step A-3: Close MR Bead (REQUIRED)**
 
 ⚠️ **VERIFICATION BEFORE CLOSING**: Confirm the work is actually on the default branch:
 ```bash
@@ -297,9 +321,9 @@ git log origin/$DEFAULT_BRANCH --oneline | grep "<issue-id>"
 bd close <mr-bead-id> --reason "Merged to $DEFAULT_BRANCH at $(git rev-parse --short HEAD)"
 ```
 
-⚠️ **DO NOT PROCEED TO CLEANUP UNTIL STEPS 2A-2 and 2A-3 ARE COMPLETE**
+⚠️ **DO NOT PROCEED TO CLEANUP UNTIL STEPS A-2 and A-3 ARE COMPLETE**
 
-**Step 2A-4: Archive and Cleanup**
+**Step A-4: Archive and Cleanup**
 ```bash
 gt mail archive <merge-ready-message-id>
 git branch -d temp
@@ -314,7 +338,7 @@ Skip to loop-check.
 
 If protected, use the PR-based workflow:
 
-**Step 2B-1: Check for Existing PR**
+**Step B-1: Check for Existing PR**
 
 ```bash
 # First, check if MR bead already has a PR label (fast path)
@@ -345,7 +369,7 @@ else
 fi
 ```
 
-**Step 2B-2: Handle PR State**
+**Step B-2: Handle PR State**
 
 | PR State | Action |
 |----------|--------|
@@ -615,8 +639,8 @@ For each open PR:
    - If merged → close PR with comment "Work merged. MR bead closed."
    - If not merged → flag for investigation (branch may need manual review)
 
-**Note**: This step only applies to repos with protected branches. Skip if branch protection
-check in merge-push returns false.
+**Note**: This step only applies to repos with protected branches. Skip if BRANCH_PROTECTED
+from detect-protection step is false.
 
 **Goal**: Inbox should have ≤3 active messages at end of cycle.
 Keep only: pending MRs in queue."""
