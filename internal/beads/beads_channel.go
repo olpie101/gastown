@@ -9,6 +9,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // ChannelFields holds structured fields for channel beads.
@@ -127,15 +128,15 @@ func ParseChannelFields(description string) *ChannelFields {
 	return fields
 }
 
-// ChannelBeadID returns the channel bead ID for a given channel name.
-// Format: hq-channel-<name> for town-level channels (default).
-// Town-level channels are stored in the shared beads database.
+// ChannelBeadID returns the bead ID for a channel name.
+// Format: hq-channel-<name> (town-level, channels span rigs)
 func ChannelBeadID(name string) string {
 	return "hq-channel-" + name
 }
 
 // CreateChannelBead creates a channel bead for pub/sub messaging.
-// The ID format is: hq-channel-<name> (e.g., hq-channel-alerts) for town-level.
+// The ID format is: hq-channel-<name> (e.g., hq-channel-alerts)
+// Channels are town-level entities (hq- prefix) because they span rigs.
 // The created_by field is populated from BD_ACTOR env var for provenance tracking.
 func (b *Beads) CreateChannelBead(name string, subscribers []string, createdBy string) (*Issue, error) {
 	id := ChannelBeadID(name)
@@ -146,6 +147,7 @@ func (b *Beads) CreateChannelBead(name string, subscribers []string, createdBy s
 		Subscribers: subscribers,
 		Status:      ChannelStatusActive,
 		CreatedBy:   createdBy,
+		CreatedAt:   time.Now().Format(time.RFC3339),
 	}
 
 	description := FormatChannelDescription(title, fields)
@@ -156,6 +158,7 @@ func (b *Beads) CreateChannelBead(name string, subscribers []string, createdBy s
 		"--description=" + description,
 		"--type=task", // Channels use task type with gt:channel label
 		"--labels=gt:channel",
+		"--force", // Override prefix check (town beads may have mixed prefixes)
 	}
 
 	// Default actor from BD_ACTOR env var for provenance tracking
