@@ -16,7 +16,6 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
-	"github.com/steveyegge/gastown/internal/beads"
 	"github.com/steveyegge/gastown/internal/style"
 	"github.com/steveyegge/gastown/internal/tui/convoy"
 	"github.com/steveyegge/gastown/internal/workspace"
@@ -312,20 +311,21 @@ func runConvoyCreate(cmd *cobra.Command, args []string) error {
 	// Generate convoy ID with cv- prefix
 	convoyID := fmt.Sprintf("hq-cv-%s", generateShortID())
 
+	// Get townRoot (parent of townBeads) - bd expects Dir to be parent of .beads
+	townRoot := filepath.Dir(townBeads)
+
 	createArgs := []string{
 		"create",
+		"--repo", ".", // Bypass role-based routing, create in current repo
 		"--type=convoy",
 		"--id=" + convoyID,
 		"--title=" + name,
 		"--description=" + description,
 		"--json",
 	}
-	if beads.NeedsForceForID(convoyID) {
-		createArgs = append(createArgs, "--force")
-	}
 
 	createCmd := exec.Command("bd", createArgs...)
-	createCmd.Dir = townBeads
+	createCmd.Dir = townRoot
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	createCmd.Stdout = &stdout
@@ -341,18 +341,12 @@ func runConvoyCreate(cmd *cobra.Command, args []string) error {
 	trackedCount := 0
 	for _, issueID := range trackedIssues {
 		// Use --type=tracks for non-blocking tracking relation
-		depArgs := []string{"dep", "add", convoyID, issueID, "--type=tracks"}
+		depArgs := []string{"--repo", ".", "dep", "add", convoyID, issueID, "--type=tracks"}
 		depCmd := exec.Command("bd", depArgs...)
-		depCmd.Dir = townBeads
-		var depStderr bytes.Buffer
-		depCmd.Stderr = &depStderr
+		depCmd.Dir = townRoot
 
 		if err := depCmd.Run(); err != nil {
-			errMsg := strings.TrimSpace(depStderr.String())
-			if errMsg == "" {
-				errMsg = err.Error()
-			}
-			style.PrintWarning("couldn't track %s: %s", issueID, errMsg)
+			style.PrintWarning("couldn't track %s: %v", issueID, err)
 		} else {
 			trackedCount++
 		}
@@ -389,10 +383,13 @@ func runConvoyAdd(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Get townRoot (parent of townBeads) - bd expects Dir to be parent of .beads
+	townRoot := filepath.Dir(townBeads)
+
 	// Validate convoy exists and get its status
 	showArgs := []string{"show", convoyID, "--json"}
 	showCmd := exec.Command("bd", showArgs...)
-	showCmd.Dir = townBeads
+	showCmd.Dir = townRoot
 	var stdout bytes.Buffer
 	showCmd.Stdout = &stdout
 
@@ -426,7 +423,7 @@ func runConvoyAdd(cmd *cobra.Command, args []string) error {
 	if convoy.Status == "closed" {
 		reopenArgs := []string{"update", convoyID, "--status=open"}
 		reopenCmd := exec.Command("bd", reopenArgs...)
-		reopenCmd.Dir = townBeads
+		reopenCmd.Dir = townRoot
 		if err := reopenCmd.Run(); err != nil {
 			return fmt.Errorf("couldn't reopen convoy: %w", err)
 		}
@@ -437,18 +434,12 @@ func runConvoyAdd(cmd *cobra.Command, args []string) error {
 	// Add 'tracks' relations for each issue
 	addedCount := 0
 	for _, issueID := range issuesToAdd {
-		depArgs := []string{"dep", "add", convoyID, issueID, "--type=tracks"}
+		depArgs := []string{"--repo", ".", "dep", "add", convoyID, issueID, "--type=tracks"}
 		depCmd := exec.Command("bd", depArgs...)
-		depCmd.Dir = townBeads
-		var depStderr bytes.Buffer
-		depCmd.Stderr = &depStderr
+		depCmd.Dir = townRoot
 
 		if err := depCmd.Run(); err != nil {
-			errMsg := strings.TrimSpace(depStderr.String())
-			if errMsg == "" {
-				errMsg = err.Error()
-			}
-			style.PrintWarning("couldn't add %s: %s", issueID, errMsg)
+			style.PrintWarning("couldn't add %s: %v", issueID, err)
 		} else {
 			addedCount++
 		}

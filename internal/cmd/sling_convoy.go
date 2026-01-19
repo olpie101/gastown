@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/steveyegge/gastown/internal/beads"
 	"github.com/steveyegge/gastown/internal/style"
 	"github.com/steveyegge/gastown/internal/workspace"
 )
@@ -64,8 +63,6 @@ func createAutoConvoy(beadID, beadTitle string) (string, error) {
 		return "", fmt.Errorf("finding town root: %w", err)
 	}
 
-	townBeads := filepath.Join(townRoot, ".beads")
-
 	// Generate convoy ID with hq-cv- prefix for visual distinction
 	// The hq-cv- prefix is registered in routes during gt install
 	convoyID := fmt.Sprintf("hq-cv-%s", slingGenerateShortID())
@@ -76,17 +73,15 @@ func createAutoConvoy(beadID, beadTitle string) (string, error) {
 
 	createArgs := []string{
 		"create",
+		"--repo", ".", // Bypass role-based routing, create in current repo
 		"--type=convoy",
 		"--id=" + convoyID,
 		"--title=" + convoyTitle,
 		"--description=" + description,
 	}
-	if beads.NeedsForceForID(convoyID) {
-		createArgs = append(createArgs, "--force")
-	}
 
 	createCmd := exec.Command("bd", append([]string{"--no-daemon"}, createArgs...)...)
-	createCmd.Dir = townBeads
+	createCmd.Dir = townRoot // bd expects Dir to be parent of .beads, not .beads itself
 	createCmd.Stderr = os.Stderr
 
 	if err := createCmd.Run(); err != nil {
@@ -95,9 +90,9 @@ func createAutoConvoy(beadID, beadTitle string) (string, error) {
 
 	// Add tracking relation: convoy tracks the issue
 	trackBeadID := formatTrackBeadID(beadID)
-	depArgs := []string{"--no-daemon", "dep", "add", convoyID, trackBeadID, "--type=tracks"}
+	depArgs := []string{"--no-daemon", "--repo", ".", "dep", "add", convoyID, trackBeadID, "--type=tracks"}
 	depCmd := exec.Command("bd", depArgs...)
-	depCmd.Dir = townBeads
+	depCmd.Dir = townRoot // bd expects Dir to be parent of .beads, not .beads itself
 	depCmd.Stderr = os.Stderr
 
 	if err := depCmd.Run(); err != nil {

@@ -327,11 +327,12 @@ func runMoleculeStatus(cmd *cobra.Command, args []string) error {
 	// This is the preferred method - agent beads have a hook_bead field
 	agentBeadID := buildAgentBeadID(target, roleCtx.Role, townRoot)
 	var hookBead *beads.Issue
+	var agentBead *beads.Issue
 
 	if agentBeadID != "" {
 		// Try to fetch the agent bead
-		agentBead, err := b.Show(agentBeadID)
-		if err == nil && agentBead != nil && agentBead.Type == "agent" {
+		agentBead, _ = b.Show(agentBeadID)
+		if agentBead != nil && agentBead.Type == "agent" {
 			status.AgentBeadID = agentBeadID
 
 			// Read hook_bead from the agent bead's database field (not description!)
@@ -355,8 +356,13 @@ func runMoleculeStatus(cmd *cobra.Command, args []string) error {
 		status.HasWork = true
 		status.PinnedBead = hookBead
 
-		// Check for attached molecule
-		attachment := beads.ParseAttachmentFields(hookBead)
+		// Check for attached molecule - check agentBead first (where mol-polecat-work
+		// is attached by gt sling), then fall back to hookBead for legacy compatibility
+		attachment := beads.ParseAttachmentFields(agentBead)
+		if attachment == nil || attachment.AttachedMolecule == "" {
+			// Fallback: check hookBead for molecule attachment
+			attachment = beads.ParseAttachmentFields(hookBead)
+		}
 		if attachment != nil {
 			status.AttachedMolecule = attachment.AttachedMolecule
 			status.AttachedAt = attachment.AttachedAt
