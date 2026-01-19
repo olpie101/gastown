@@ -33,7 +33,7 @@ Witness                    Refinery                      Git
 After successful merge, Refinery sends MERGED mail back to Witness so it can
 complete cleanup (nuke the polecat worktree)."""
 formula = "mol-refinery-patrol"
-version = 7
+version = 8
 
 [[steps]]
 id = "inbox-check"
@@ -130,11 +130,125 @@ If branch doesn't exist for a queued MR:
 Track verified MR list for this cycle."""
 
 [[steps]]
-id = "process-branch"
-title = "Mechanical rebase"
+id = "detect-repo-protection"
+title = "Detect repository branch protection"
 needs = ["queue-scan"]
 description = """
+Detect branch protection status ONCE at the start of processing - this determines the merge strategy for ALL items.
+
+**CRITICAL**: This MUST complete before processing any branches. Do NOT skip this step.
+
+**Step 1: Get repo info**
+```bash
+REPO_INFO=$(gh repo view --json owner,name -q '"\(.owner.login)/\(.name)"')
+echo "Repo: $REPO_INFO"
+```
+
+**Step 2: Check protection status**
+```bash
+if gh api "repos/${REPO_INFO}/branches/${DEFAULT_BRANCH}/protection" &>/dev/null; then
+    BRANCH_PROTECTED="true"
+else
+    BRANCH_PROTECTED="false"
+fi
+echo "Default branch protection: $BRANCH_PROTECTED"
+```
+
+**Step 3: Verify detection succeeded**
+- If REPO_INFO is empty or malformed, STOP and investigate
+- If the gh api call fails with non-404 error, STOP and investigate
+- Only proceed when you have a definitive true/false for BRANCH_PROTECTED
+
+**IMPORTANT**: Track BRANCH_PROTECTED for the entire patrol cycle. This value determines:
+- PROTECTED (true): Use PR-based workflow for ALL merges
+- UNPROTECTED (false): Use direct push workflow
+
+**Why detect early?** Branch protection determines the ENTIRE merge strategy. Detecting late
+leads to wasted rebase work and potential accidental direct pushes to protected branches."""
+
+[[steps]]
+id = "check-mr-pr-status"
+title = "Check existing PR status for MR items"
+needs = ["detect-repo-protection"]
+description = """
+For protected branches, check if MR beads already have associated PRs before processing.
+
+**Skip this step if BRANCH_PROTECTED=false** (unprotected repos don't use PRs).
+
+For each MR in the queue:
+
+**Step 1: Check for PR label on MR bead**
+```bash
+PR_LABEL=$(bd show <mr-bead-id> --json | jq -r '.[0].labels[]? | select(startswith("pr:"))' | head -1)
+```
+
+**Step 2: Determine PR state**
+```bash
+if [ -n "$PR_LABEL" ]; then
+    PR_NUMBER="${PR_LABEL#pr:}"
+    PR_JSON=$(gh pr view "$PR_NUMBER" --json state,mergedAt,url 2>/dev/null)
+    PR_STATE=$(echo "$PR_JSON" | jq -r '.state')
+else
+    # Check GitHub directly
+    PR_JSON=$(gh pr list --head "<polecat-branch>" --state all --json number,state,mergedAt,url --jq '.[0]' 2>/dev/null)
+    if [ -z "$PR_JSON" ] || [ "$PR_JSON" = "null" ]; then
+        PR_STATE="NONE"
+    else
+        PR_STATE=$(echo "$PR_JSON" | jq -r '.state')
+        PR_NUMBER=$(echo "$PR_JSON" | jq -r '.number')
+        # Backfill the label
+        bd update <mr-bead-id> --add-label="pr:${PR_NUMBER}"
+    fi
+fi
+```
+
+**Step 3: Categorize MRs by PR state**
+
+| PR State | Action |
+|----------|--------|
+| **NONE** | Needs full processing: rebase, test, create PR |
+| **OPEN** | Skip rebase/test - PR already in GitHub workflow (see below) |
+| **MERGED** | Skip rebase/test - go directly to cleanup |
+| **CLOSED** | Skip rebase/test - go directly to close MR bead |
+
+**For OPEN PRs - check mergeable status:**
+```bash
+PR_MERGEABLE=$(gh pr view $PR_NUMBER --json mergeable -q '.mergeable')
+```
+- `MERGEABLE` or `UNKNOWN` → Skip entirely, PR is waiting for CI/reviews
+- `CONFLICTING` → Needs rebase update only (no local tests needed, CI will run)
+
+Track for each MR:
+- mr_bead_id
+- branch
+- pr_state (NONE/OPEN/MERGED/CLOSED)
+- pr_number (if exists)
+- pr_mergeable (for OPEN PRs only)
+
+**Why check early?** Once a PR exists, GitHub CI handles testing. No need to duplicate
+locally. Only intervene if PR has conflicts that need rebasing."""
+
+[[steps]]
+id = "process-branch"
+title = "Mechanical rebase"
+needs = ["check-mr-pr-status"]
+description = """
 Pick next branch from queue. Attempt mechanical rebase on current default branch.
+
+**Pre-check based on PR state from check-mr-pr-status step:**
+
+| PR State | Mergeable | Action |
+|----------|-----------|--------|
+| MERGED | - | Skip to merge-push for cleanup |
+| CLOSED | - | Skip to merge-push for cleanup |
+| OPEN | MERGEABLE/UNKNOWN | **Skip entirely** - PR in GitHub workflow |
+| OPEN | CONFLICTING | Rebase only, push to update PR, skip tests |
+| NONE | - | Full processing: rebase, test, create PR |
+
+**For OPEN+CONFLICTING:** Only rebase and push to update the PR branch. Do NOT run tests
+locally - GitHub CI will run them after the push.
+
+**For PR_STATE=NONE (needs full processing):**
 
 **Step 1: Checkout and attempt rebase**
 ```bash
@@ -245,50 +359,16 @@ If tests FAILED:
 This is non-negotiable. Never disavow. Never "note and proceed." """
 
 [[steps]]
-id = "detect-protection"
-title = "Detect branch protection"
-needs = ["handle-failures"]
-description = """
-Determine if default branch is protected before attempting merge.
-
-**CRITICAL**: This check MUST complete before any merge attempt. Do NOT skip this step.
-
-**Step 1: Get repo info**
-```bash
-REPO_INFO=$(gh repo view --json owner,name -q '"\\(.owner.login)/\\(.name)"')
-echo "Repo: $REPO_INFO"
-```
-
-**Step 2: Check protection status**
-```bash
-if gh api "repos/${REPO_INFO}/branches/${DEFAULT_BRANCH}/protection" &>/dev/null; then
-    BRANCH_PROTECTED="true"
-else
-    BRANCH_PROTECTED="false"
-fi
-echo "Default branch protection: $BRANCH_PROTECTED"
-```
-
-**Step 3: Verify detection succeeded**
-- If REPO_INFO is empty or malformed, STOP and investigate
-- If the gh api call fails with non-404 error, STOP and investigate
-- Only proceed when you have a definitive true/false for BRANCH_PROTECTED
-
-Track: BRANCH_PROTECTED value (true/false) for merge-push step.
-
-**Why this is a separate step**: Branch protection determines the ENTIRE merge strategy.
-Getting this wrong leads to push rejections and improvised recovery paths. By making it
-explicit, we ensure the agent commits to a path BEFORE attempting any git operations."""
-
-[[steps]]
 id = "merge-push"
 title = "Merge and push to default branch"
-needs = ["detect-protection"]
+needs = ["handle-failures"]
 description = """
-Merge to default branch. Path determined by BRANCH_PROTECTED from detect-protection step.
+Merge to default branch. Path determined by BRANCH_PROTECTED from detect-repo-protection step.
 
-**PREREQUISITE**: BRANCH_PROTECTED must be set from the detect-protection step.
+**PREREQUISITE**: BRANCH_PROTECTED must be set from the detect-repo-protection step (runs early in cycle).
 If BRANCH_PROTECTED is not set, STOP - do not proceed with any merge attempt.
+
+**PR_STATE from check-mr-pr-status**: Use this to handle already-merged or closed PRs efficiently.
 
 ---
 
@@ -640,7 +720,7 @@ For each open PR:
    - If not merged → flag for investigation (branch may need manual review)
 
 **Note**: This step only applies to repos with protected branches. Skip if BRANCH_PROTECTED
-from detect-protection step is false.
+from detect-repo-protection step is false.
 
 **Goal**: Inbox should have ≤3 active messages at end of cycle.
 Keep only: pending MRs in queue."""
@@ -664,25 +744,64 @@ it's time for a fresh session.
 
 **Step 2: Decision tree**
 
-If queue non-empty AND context LOW:
+```
+                    ┌─────────────────┐
+                    │  Queue empty?   │
+                    └────────┬────────┘
+                             │
+              ┌──────────────┴──────────────┐
+              │ YES                         │ NO
+              ▼                             ▼
+    ┌─────────────────────┐      ┌─────────────────────┐
+    │ EXIT CLEANLY        │      │ Context HIGH?       │
+    │ (no handoff)        │      └──────────┬──────────┘
+    │ Daemon will wake    │                 │
+    │ when work arrives   │      ┌──────────┴──────────┐
+    └─────────────────────┘      │ YES                 │ NO
+                                 ▼                     ▼
+                      ┌──────────────────┐  ┌──────────────────┐
+                      │ gt handoff       │  │ Loop: spawn wisp │
+                      │ (successor       │  │ return to        │
+                      │ continues queue) │  │ inbox-check      │
+                      └──────────────────┘  └──────────────────┘
+```
+
+**If queue EMPTY:**
+- Squash wisp with summary digest
+- **EXIT cleanly - DO NOT use gt handoff**
+- The daemon/witness will wake you when new MERGE_READY mail arrives
+- Prevents infinite empty patrol loops
+
+```bash
+bd mol squash <wisp-id> --summary="Patrol complete: queue empty"
+# Just exit - no handoff needed
+```
+
+**If queue NON-EMPTY AND context HIGH:**
+- Squash wisp with summary digest
+- Use `gt handoff` so successor can continue processing:
+
+```bash
+gt handoff -s "Patrol handoff" -m "Context limit reached.
+Queue: N branches remaining
+Processed: X merges, Y PRs created
+Next: Continue processing queue"
+```
+
+**If queue NON-EMPTY AND context LOW:**
 - Squash this wisp to digest
 - Spawn fresh patrol wisp
 - Return to inbox-check
 
-If queue empty OR context HIGH OR good stopping point:
-- Squash wisp with summary digest
-- Use `gt handoff` for clean session transition:
-
 ```bash
-gt handoff -s "Patrol complete" -m "Merged X branches, Y tests passed.
-Queue: empty/N remaining
-Next: [any notes for successor]"
+bd mol squash <wisp-id> --summary="Patrol cycle: merged X branches"
+bd mol spawn mol-refinery-patrol --wisp --assignee=refinery
+# Continue to inbox-check...
 ```
 
-**Why gt handoff?**
-- Sends handoff mail to yourself with context
-- Respawns with fresh Claude instance
-- SessionStart hook runs gt prime
-- Successor picks up from your hook
+**Why no handoff when queue empty?**
+Using `gt handoff` when queue is empty creates an infinite loop:
+handoff → gt prime → create patrol → find empty queue → handoff → repeat
 
-**DO NOT just exit.** Always use `gt handoff` for proper lifecycle."""
+The witness sends MERGE_READY mail when polecats complete work. The daemon
+monitors mail and wakes the refinery when there's actual work to do."""

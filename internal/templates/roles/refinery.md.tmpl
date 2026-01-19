@@ -118,20 +118,54 @@ git status                    # See what conflicted
 gt mail send greenplace/polecats/rictus -s "Rebase needed" -m "..."
 ```
 
+## ⛔ CRITICAL: Branch Protection Rules
+
+**NEVER push directly to a protected default branch. UNDER NO CIRCUMSTANCES.**
+
+Before ANY merge attempt, you MUST:
+1. Detect if the default branch is protected (run `gh api` check)
+2. If protected → Use PR-based workflow ONLY
+3. If unprotected → Direct push is permitted
+
+```bash
+# MANDATORY: Detect branch protection FIRST (before any rebase/merge work)
+REPO_INFO=$(gh repo view --json owner,name -q '"\(.owner.login)/\(.name)"')
+if gh api "repos/${REPO_INFO}/branches/{{ .DefaultBranch }}/protection" &>/dev/null; then
+    BRANCH_PROTECTED="true"
+else
+    BRANCH_PROTECTED="false"
+fi
+echo "Branch protection: $BRANCH_PROTECTED"
+```
+
+**If BRANCH_PROTECTED=true:**
+- You MUST create a PR instead of direct push
+- You MUST NOT attempt `git push origin {{ .DefaultBranch }}`
+- Push to the polecat branch and create PR with `gh pr create`
+
+**Failure to check branch protection WILL result in push rejections and broken workflows.**
+
+---
+
 ## Patrol Molecule: mol-refinery-patrol
 
 Your work is defined by the `mol-refinery-patrol` molecule with these steps:
 
 1. **inbox-check** - Handle messages, escalations
 2. **queue-scan** - Identify polecat branches waiting
-3. **process-branch** - Rebase on current main
-4. **run-tests** - Run test suite
-5. **handle-failures** - **VERIFICATION GATE** (critical!)
-6. **merge-push** - Merge and push immediately
-7. **loop-check** - More branches? Loop back
-8. **generate-summary** - Summarize cycle
-9. **context-check** - Check context usage
-10. **burn-or-loop** - Burn wisp, loop or exit
+3. **detect-repo-protection** - **MANDATORY: Check if default branch is protected**
+4. **check-mr-pr-status** - Check existing PR status for each MR item
+5. **process-branch** - Rebase on current main (skip if PR exists and is clean)
+6. **run-tests** - Run test suite (skip if PR already exists - CI handles it)
+7. **handle-failures** - **VERIFICATION GATE** (critical!)
+8. **merge-push** - Merge (direct push OR PR based on protection status)
+9. **loop-check** - More branches? Loop back
+10. **generate-summary** - Summarize cycle
+11. **context-check** - Check context usage
+12. **burn-or-loop** - Burn wisp, loop or exit
+
+**Optimization for existing PRs:** If a PR already exists (pr: label on MR bead), skip
+local rebase/test. GitHub CI handles testing. Only intervene if PR has merge conflicts.
 
 ## Startup Protocol: Propulsion
 
@@ -249,14 +283,34 @@ GATE: Cannot proceed to merge without fix OR bead filed
 ```
 **FORBIDDEN**: Note failure and merge without tracking.
 
-**merge-push**: Merge to main and push immediately
+**merge-push**: Merge based on branch protection status (determined in detect-repo-protection step)
+
+⚠️ **CHECK BRANCH_PROTECTED BEFORE PROCEEDING**
+
+**If BRANCH_PROTECTED=false (unprotected):**
 ```bash
 git checkout {{ .DefaultBranch }}
 git merge --ff-only temp
 git push origin {{ .DefaultBranch }}
 git branch -d temp
-git branch -d polecat/<worker>           # Delete local polecat branch
+git push origin --delete polecat/<worker>  # Delete remote polecat branch
 ```
+
+**If BRANCH_PROTECTED=true (protected) - USE PR WORKFLOW:**
+```bash
+# Push rebased commits to polecat branch
+git push -f origin temp:polecat/<worker>
+
+# Create PR (if not exists)
+gh pr create --head "polecat/<worker>" --base "{{ .DefaultBranch }}" \
+  --title "[<issue-id>] <title>" --body "Auto-created by Refinery"
+
+# Wait for PR to be merged via GitHub (CI checks, reviews)
+# Do NOT attempt direct push to {{ .DefaultBranch }}
+git branch -d temp
+```
+
+**⛔ NEVER run `git push origin {{ .DefaultBranch }}` when BRANCH_PROTECTED=true**
 
 **loop-check**: More branches? Return to process-branch.
 
