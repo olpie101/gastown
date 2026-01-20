@@ -40,7 +40,7 @@ beads created from it. Use `bd ready` to find them - do NOT read this file direc
 | Context filling | Use gt handoff to cycle to fresh session |
 | Unsure what to do | Mail Witness, don't guess |"""
 formula = "mol-polecat-work"
-version = 5
+version = 6
 
 [[steps]]
 id = "load-context"
@@ -54,11 +54,25 @@ gt prime                    # Load role context
 bd prime                    # Load beads context
 ```
 
-**2. Detect the default branch (used throughout this workflow):**
+**2. Detect the default branch:**
+
+**⚠️ CRITICAL: This is an INTERNAL variable, not a shell variable.**
+You must remember this value and use it in ALL subsequent steps.
+Shell variables do NOT persist across steps - you must track this yourself.
+
 ```bash
-DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD --short | sed 's,.*/,,')
-echo "Default branch: $DEFAULT_BRANCH"
+git symbolic-ref refs/remotes/origin/HEAD --short | sed 's,.*/,,'
 ```
+
+Example output: `main`, `master`, `develop`, etc.
+
+After running the command, state clearly:
+> "Default branch detected: [branch-name]. I will use this value throughout this workflow."
+
+**REMEMBER for this work session:**
+- `DEFAULT_BRANCH` = the value you just detected
+
+This value is used in: branch-setup, preflight-tests, self-review, cleanup-workspace
 
 **3. Check your hook:**
 ```bash
@@ -132,9 +146,12 @@ git checkout -- .
 ```
 
 **4. Sync with default branch:**
+
+Use your recorded `DEFAULT_BRANCH` value:
 ```bash
 git fetch origin
-git rebase origin/$DEFAULT_BRANCH      # Get latest, rebase your branch
+# Replace <DEFAULT_BRANCH> with actual branch name (e.g., "main", "develop")
+git rebase origin/<DEFAULT_BRANCH>      # Get latest, rebase your branch
 ```
 
 If rebase conflicts:
@@ -155,9 +172,11 @@ Check if the codebase is healthy BEFORE starting your work.
 let someone else's mess consume your entire mission.
 
 **1. Check tests on default branch:**
+
+Use your recorded `DEFAULT_BRANCH` value:
 ```bash
 git stash                   # Save your branch state
-git checkout origin/$DEFAULT_BRANCH
+git checkout origin/<DEFAULT_BRANCH>
 go test ./...               # Or appropriate test command
 ```
 
@@ -179,14 +198,16 @@ Make a judgment call:
 | Big fix (>1 hour) | File bead, notify Witness, proceed with your work |
 
 **Quick fix path:**
+
+Use your recorded `DEFAULT_BRANCH` value:
 ```bash
 # Fix the issue
 git add <files>
 git commit -m "fix: <description> (pre-existing failure)"
-git push origin $DEFAULT_BRANCH
+git push origin <DEFAULT_BRANCH>
 git checkout -
 git stash pop
-git rebase origin/$DEFAULT_BRANCH      # Get your fix
+git rebase origin/<DEFAULT_BRANCH>      # Get your fix
 ```
 
 **File and proceed path:**
@@ -265,9 +286,11 @@ description = """
 Review your own changes before running tests.
 
 **1. Review the diff:**
+
+Use your recorded `DEFAULT_BRANCH` value:
 ```bash
-git diff origin/$DEFAULT_BRANCH...HEAD     # All changes vs default branch
-git log --oneline origin/$DEFAULT_BRANCH..HEAD  # All commits
+git diff origin/<DEFAULT_BRANCH>...HEAD     # All changes vs default branch
+git log --oneline origin/<DEFAULT_BRANCH>..HEAD  # All commits
 ```
 
 **2. Check for common issues:**
@@ -285,7 +308,7 @@ Don't just note them - fix them now. Amend or add commits as needed.
 
 **4. Verify no unintended changes:**
 ```bash
-git diff --stat origin/$DEFAULT_BRANCH...HEAD
+git diff --stat origin/<DEFAULT_BRANCH>...HEAD
 # Only files relevant to {{issue}} should appear
 ```
 
@@ -377,11 +400,13 @@ git push -u origin $(git branch --show-current)
 ```
 
 **5. Verify nothing left behind:**
+
+Use your recorded `DEFAULT_BRANCH` value:
 ```bash
 git status                  # Clean
 git stash list              # Empty
-git log origin/$DEFAULT_BRANCH..HEAD   # Your commits
-git diff origin/$DEFAULT_BRANCH...HEAD # Your changes (expected)
+git log origin/<DEFAULT_BRANCH>..HEAD   # Your commits
+git diff origin/<DEFAULT_BRANCH>...HEAD # Your changes (expected)
 ```
 
 **Exit criteria:** Branch pushed, workspace clean, no cruft."""

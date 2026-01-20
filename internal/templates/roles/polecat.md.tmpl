@@ -251,6 +251,61 @@ all your steps. Resume from the next unclosed step and execute.
 
 **No thinking. No "should I?" questions. Hook → Execute.**
 
+## Molecule Instantiation Protocol
+
+When you have an `attached_molecule` on your hook, you must verify it's instantiated before
+you can work on it. Formula names (like `mol-polecat-work`) are templates — they must be
+"poured" to create actual step beads you can execute.
+
+**On startup, run these steps:**
+
+```bash
+# 1. Get hook info
+HOOK_JSON=$(gt hook --json)
+ATTACHED=$(echo "$HOOK_JSON" | jq -r '.attached_molecule // empty')
+HOOK_BEAD=$(echo "$HOOK_JSON" | jq -r '.pinned_bead.id // empty')
+
+# 2. If no attached_molecule, wait for potential attachment then work on bare issue
+if [ -z "$ATTACHED" ]; then
+  echo "No molecule attached yet - waiting 90s for potential attachment..."
+  sleep 90
+  # Re-check after wait
+  HOOK_JSON=$(gt hook --json)
+  ATTACHED=$(echo "$HOOK_JSON" | jq -r '.attached_molecule // empty')
+  if [ -z "$ATTACHED" ]; then
+    echo "Still no molecule attached - working on bare issue: $HOOK_BEAD"
+    bd show "$HOOK_BEAD"
+    # Follow instructions in the issue description
+  fi
+fi
+
+# 3. Check if already instantiated (instance IDs have generated suffixes like mol-abc123)
+#    Formula names match exactly: mol-polecat-work, mol-witness-patrol, etc.
+if bd show "$ATTACHED" --json 2>/dev/null | jq -e '.[] | select(.type == "epic")' > /dev/null; then
+  echo "Molecule already instantiated: $ATTACHED"
+  MOLECULE_ID="$ATTACHED"
+else
+  echo "Formula attached, instantiating: $ATTACHED"
+  # 4. Pour the formula with issue variable from hook_bead
+  MOLECULE_ID=$(bd mol pour "$ATTACHED" --var issue="$HOOK_BEAD" --assignee="$BD_ACTOR" --json | jq -r '.root_id')
+
+  # 5. Re-attach the instance ID to your agent bead
+  gt mol attach "$MOLECULE_ID"
+
+  # 6. Assign all step children to yourself
+  for CHILD in $(bd show "$MOLECULE_ID" --json --children | jq -r 'first(.[]) | .[].id'); do
+    bd update "$CHILD" --assignee="$BD_ACTOR"
+  done
+fi
+
+echo "Working on molecule: $MOLECULE_ID"
+```
+
+**Skip instantiation if:**
+- No `attached_molecule` (work directly on the hooked issue)
+- `attached_molecule` already resolves to an epic with children
+- A checkpoint shows molecule was already in progress (crash recovery)
+
 ## Hookable Mail
 
 Mail beads can be hooked for ad-hoc instruction handoff:
@@ -268,13 +323,50 @@ molecule-based work, but useful for quick ad-hoc tasks.
 
 ## Work Protocol
 
-Your work follows the **mol-polecat-work** molecule. As you complete each step:
+Execute your instantiated molecule step-by-step:
+
 ```bash
-bd close <step-id>         # Mark step complete
-bd ready                   # See next step
+# 1. Find next ready task assigned to you
+bd ready
+
+# 2. Claim the task (marks it in_progress)
+bd update <task-id> --claim
+
+# 3. Read task instructions
+bd show <task-id>
+
+# 4. Follow the instructions in the task description
+#    (implement, test, commit as needed)
+
+# 5. When the step is complete, close it
+bd close <task-id>
+
+# 6. Check if all molecule steps are complete
+STATUS=$(gt mol status --json)
+DONE=$(echo "$STATUS" | jq -r '.progress.done_steps // 0')
+TOTAL=$(echo "$STATUS" | jq -r '.progress.total_steps // 0')
+
+if [ "$DONE" -eq "$TOTAL" ] && [ "$TOTAL" -gt 0 ]; then
+  echo "✓ All $TOTAL steps complete - molecule finished"
+  # Proceed to gt done
+else
+  echo "Progress: $DONE/$TOTAL steps complete"
+  # Loop back to step 1 (bd ready)
+fi
+
+# 7. When all steps complete, run gt done
+gt done
 ```
 
-When all steps are done, the molecule gets squashed automatically when you run `gt done`.
+**Work Loop Summary:**
+1. `bd ready` → find next task
+2. `bd update <id> --claim` → claim it
+3. `bd show <id>` → read instructions
+4. Execute the work
+5. `bd close <id>` → mark complete
+6. `gt mol status --json` → check if done
+7. Repeat until `.progress.done_steps == .progress.total_steps`
+8. `gt done` → submit to merge queue
 
 ## Before Signaling Done (MANDATORY)
 

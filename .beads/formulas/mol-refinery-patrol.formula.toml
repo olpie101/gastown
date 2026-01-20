@@ -33,7 +33,7 @@ Witness                    Refinery                      Git
 After successful merge, Refinery sends MERGED mail back to Witness so it can
 complete cleanup (nuke the polecat worktree)."""
 formula = "mol-refinery-patrol"
-version = 8
+version = 9
 
 [[steps]]
 id = "inbox-check"
@@ -41,13 +41,6 @@ title = "Check refinery mail"
 description = """
 Check mail for MERGE_READY submissions, escalations, and messages.
 
-**1. Detect the default branch (used throughout this workflow):**
-```bash
-DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD --short | sed 's,.*/,,')
-echo "Default branch: $DEFAULT_BRANCH"
-```
-
-**2. Check mail:**
 ```bash
 gt mail inbox
 ```
@@ -130,9 +123,42 @@ If branch doesn't exist for a queued MR:
 Track verified MR list for this cycle."""
 
 [[steps]]
+id = "detect-default-branch"
+title = "Detect default branch"
+needs = ["queue-scan"]
+description = """
+Detect the repository's default branch ONCE at the start of processing.
+
+**⚠️ CRITICAL: This is an INTERNAL variable, not a shell variable.**
+You must remember this value and use it in ALL subsequent steps.
+Shell variables do NOT persist across steps - you must track this yourself.
+
+**Step 1: Detect the default branch**
+```bash
+git symbolic-ref refs/remotes/origin/HEAD --short | sed 's,.*/,,'
+```
+
+Example output: `main`, `master`, `develop`, etc.
+
+**Step 2: Record and announce**
+After running the command, state clearly:
+> "Default branch detected: [branch-name]. I will use this value for all rebase and PR operations."
+
+**REMEMBER for this patrol cycle:**
+- `DEFAULT_BRANCH` = the value you just detected (e.g., "main", "develop")
+
+This value is used in:
+- `process-branch`: rebase target (`origin/<DEFAULT_BRANCH>`)
+- `merge-push`: PR base branch (`--base "<DEFAULT_BRANCH>"`)
+- `patrol-cleanup`: verification queries
+
+**Why detect here?** The default branch varies by repository. Hardcoding "main" breaks
+repos using "master", "develop", or custom branch names. Detect once, use everywhere."""
+
+[[steps]]
 id = "detect-repo-protection"
 title = "Detect repository branch protection"
-needs = ["queue-scan"]
+needs = ["detect-default-branch"]
 description = """
 Detect branch protection status ONCE at the start of processing - this determines the merge strategy for ALL items.
 
@@ -140,19 +166,23 @@ Detect branch protection status ONCE at the start of processing - this determine
 
 **Step 1: Get repo info**
 ```bash
-REPO_INFO=$(gh repo view --json owner,name -q '"\(.owner.login)/\(.name)"')
+REPO_INFO=$(gh repo view --json owner,name -q '.owner.login + "/" + .name')
 echo "Repo: $REPO_INFO"
 ```
 
 **Step 2: Check protection status**
+
+Using the `DEFAULT_BRANCH` value you recorded in the detect-default-branch step:
 ```bash
-if gh api "repos/${REPO_INFO}/branches/${DEFAULT_BRANCH}/protection" &>/dev/null; then
-    BRANCH_PROTECTED="true"
-else
-    BRANCH_PROTECTED="false"
-fi
-echo "Default branch protection: $BRANCH_PROTECTED"
+# Replace <DEFAULT_BRANCH> with the actual branch name you detected
+gh api "repos/${REPO_INFO}/branches/<DEFAULT_BRANCH>/protection" 2>/dev/null
 ```
+
+- If the command succeeds (exit 0): `BRANCH_PROTECTED = true`
+- If the command fails with 404: `BRANCH_PROTECTED = false`
+- If other error: STOP and investigate
+
+State clearly: "Branch protection for [DEFAULT_BRANCH]: [true/false]"
 
 **Step 3: Verify detection succeeded**
 - If REPO_INFO is empty or malformed, STOP and investigate
@@ -196,8 +226,8 @@ else
     else
         PR_STATE=$(echo "$PR_JSON" | jq -r '.state')
         PR_NUMBER=$(echo "$PR_JSON" | jq -r '.number')
-        # Backfill the label
-        bd update <mr-bead-id> --add-label="pr:${PR_NUMBER}"
+        # Backfill the pr: label and add checked: timestamp
+        bd update <mr-bead-id> --add-label="pr:${PR_NUMBER}" --add-label="checked:$(date -u +%Y-%m-%dT%H-%M-%SZ)"
     fi
 fi
 ```
@@ -217,6 +247,18 @@ PR_MERGEABLE=$(gh pr view $PR_NUMBER --json mergeable -q '.mergeable')
 ```
 - `MERGEABLE` or `UNKNOWN` → Skip entirely, PR is waiting for CI/reviews
 - `CONFLICTING` → Needs rebase update only (no local tests needed, CI will run)
+
+**⚠️ CRITICAL: DO NOT WAIT for PR to merge.** Move to the next MR in the queue immediately.
+GitHub handles CI checks and reviews asynchronously. The PR will be picked up as MERGED
+on a future patrol cycle. Patrol is non-blocking - process all MRs, create/update PRs, then exit.
+
+**Update checked: timestamp for OPEN PRs:**
+```bash
+# Remove old checked label if exists, add new one
+OLD_CHECKED=$(bd show <mr-bead-id> --json | jq -r '.[0].labels[]? | select(startswith("checked:"))' | head -1)
+[ -n "$OLD_CHECKED" ] && bd update <mr-bead-id> --remove-label="$OLD_CHECKED"
+bd update <mr-bead-id> --add-label="checked:$(date -u +%Y-%m-%dT%H-%M-%SZ)"
+```
 
 Track for each MR:
 - mr_bead_id
@@ -251,9 +293,12 @@ locally - GitHub CI will run them after the push.
 **For PR_STATE=NONE (needs full processing):**
 
 **Step 1: Checkout and attempt rebase**
+
+Use the `DEFAULT_BRANCH` value you recorded in detect-default-branch:
 ```bash
 git checkout -b temp origin/<polecat-branch>
-git rebase origin/$DEFAULT_BRANCH
+# Replace <DEFAULT_BRANCH> with the actual branch name (e.g., "main", "develop")
+git rebase origin/<DEFAULT_BRANCH>
 ```
 
 **Step 2: Check rebase result**
@@ -282,8 +327,8 @@ git rebase --abort
 
 2. **Record conflict metadata**:
 ```bash
-# Capture default branch SHA for reference
-MAIN_SHA=$(git rev-parse origin/$DEFAULT_BRANCH)
+# Capture default branch SHA for reference (use your recorded DEFAULT_BRANCH)
+MAIN_SHA=$(git rev-parse origin/<DEFAULT_BRANCH>)
 BRANCH_SHA=$(git rev-parse origin/<polecat-branch>)
 ```
 
@@ -377,10 +422,13 @@ If BRANCH_PROTECTED is not set, STOP - do not proceed with any merge attempt.
 If unprotected, use the direct merge-push workflow:
 
 **Step A-1: Merge and Push**
+
+Use your recorded `DEFAULT_BRANCH` value:
 ```bash
-git checkout $DEFAULT_BRANCH
+# Replace <DEFAULT_BRANCH> with actual branch name (e.g., "main", "develop")
+git checkout <DEFAULT_BRANCH>
 git merge --ff-only temp
-git push origin $DEFAULT_BRANCH
+git push origin <DEFAULT_BRANCH>
 ```
 
 **Step A-2: Send MERGED Notification (REQUIRED)**
@@ -394,11 +442,12 @@ Merged-At: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 ⚠️ **VERIFICATION BEFORE CLOSING**: Confirm the work is actually on the default branch:
 ```bash
-git log origin/$DEFAULT_BRANCH --oneline | grep "<issue-id>"
+# Use your recorded DEFAULT_BRANCH value
+git log origin/<DEFAULT_BRANCH> --oneline | grep "<issue-id>"
 ```
 
 ```bash
-bd close <mr-bead-id> --reason "Merged to $DEFAULT_BRANCH at $(git rev-parse --short HEAD)"
+bd close <mr-bead-id> --reason "Merged to <DEFAULT_BRANCH> at $(git rev-parse --short HEAD)"
 ```
 
 ⚠️ **DO NOT PROCEED TO CLEANUP UNTIL STEPS A-2 and A-3 ARE COMPLETE**
@@ -443,8 +492,8 @@ else
         PR_NUMBER=$(echo "$PR_JSON" | jq -r '.number')
         PR_URL=$(echo "$PR_JSON" | jq -r '.url')
 
-        # Backfill the label for future cycles
-        bd update <mr-bead-id> --add-label="pr:${PR_NUMBER}"
+        # Backfill the pr: label and add checked: timestamp for future cycles
+        bd update <mr-bead-id> --add-label="pr:${PR_NUMBER}" --add-label="checked:$(date -u +%Y-%m-%dT%H-%M-%SZ)"
     fi
 fi
 ```
@@ -462,14 +511,15 @@ fi
 
 ### NONE - Create PR
 
+Use your recorded `DEFAULT_BRANCH` value for the `--base` parameter:
 ```bash
 # Push rebased commits to origin (update the polecat branch)
 git push -f origin temp:<polecat-branch>
 
-# Create PR
+# Create PR - CRITICAL: Use the DEFAULT_BRANCH you detected, NOT hardcoded "main"
 PR_URL=$(gh pr create \\
     --head "<polecat-branch>" \\
-    --base "$DEFAULT_BRANCH" \\
+    --base "<DEFAULT_BRANCH>" \\
     --title "[<issue-id>] <issue-title>" \\
     --body "## Merge Request
 
@@ -482,8 +532,8 @@ Polecat: <polecat-name>
 
 PR_NUMBER=$(gh pr view "<polecat-branch>" --json number -q '.number')
 
-# Add PR number as label to MR bead (audit trail + easy lookup)
-bd update <mr-bead-id> --add-label="pr:${PR_NUMBER}"
+# Add PR number and checked timestamp as labels to MR bead (audit trail + easy lookup)
+bd update <mr-bead-id> --add-label="pr:${PR_NUMBER}" --add-label="checked:$(date -u +%Y-%m-%dT%H-%M-%SZ)"
 
 # Cleanup temp branch (required for next process-branch iteration)
 git branch -D temp
@@ -495,7 +545,10 @@ git branch -D temp
 
 ---
 
-### OPEN - Wait for Merge (or Update if Conflicts)
+### OPEN - Continue to Next MR (Do NOT Wait)
+
+**⚠️ DO NOT WAIT for PR to merge.** GitHub handles CI/reviews asynchronously.
+Continue processing other MRs. This PR will be picked up as MERGED on a future patrol cycle.
 
 ```bash
 # Check if PR has merge conflicts
@@ -507,10 +560,16 @@ if [ "$PR_MERGEABLE" = "CONFLICTING" ]; then
     echo "Updated PR with rebased commits"
 fi
 
+# Update checked: timestamp (remove old, add new)
+OLD_CHECKED=$(bd show <mr-bead-id> --json | jq -r '.[0].labels[]? | select(startswith("checked:"))' | head -1)
+[ -n "$OLD_CHECKED" ] && bd update <mr-bead-id> --remove-label="$OLD_CHECKED"
+bd update <mr-bead-id> --add-label="checked:$(date -u +%Y-%m-%dT%H-%M-%SZ)"
+
 # Cleanup temp branch (required for next process-branch iteration)
 git branch -D temp
 
-# PR is waiting for checks/reviews (or just updated) - nothing more to do
+# PR is in GitHub workflow - DO NOT WAIT for merge
+# Continue to next MR in queue immediately
 # Skip to loop-check
 ```
 
@@ -688,7 +747,8 @@ bd list --type=merge-request --status=open
 
 For each open MR bead:
 1. Check if branch exists: `git ls-remote origin refs/heads/<branch>`
-2. If branch gone, verify work is on default branch: `git log origin/$DEFAULT_BRANCH --oneline | grep "<source_issue>"`
+2. If branch gone, verify work is on default branch: `git log origin/<DEFAULT_BRANCH> --oneline | grep "<source_issue>"`
+   (Use your recorded DEFAULT_BRANCH value)
 3. If work on default branch → close MR with reason "Merged (verified on default branch)"
 4. If work NOT on default branch → investigate before closing:
    - Check source_issue validity (should be gt-xxxxx, not branch name)
@@ -715,7 +775,8 @@ For each open PR:
 2. Check if MR bead exists: `bd show <mr-bead-id>`
 3. If MR bead doesn't exist or is closed:
    - This is an orphaned PR
-   - Check if branch has been merged: `git branch -r --merged origin/$DEFAULT_BRANCH | grep <branch>`
+   - Check if branch has been merged: `git branch -r --merged origin/<DEFAULT_BRANCH> | grep <branch>`
+     (Use your recorded DEFAULT_BRANCH value)
    - If merged → close PR with comment "Work merged. MR bead closed."
    - If not merged → flag for investigation (branch may need manual review)
 
@@ -804,4 +865,10 @@ Using `gt handoff` when queue is empty creates an infinite loop:
 handoff → gt prime → create patrol → find empty queue → handoff → repeat
 
 The witness sends MERGE_READY mail when polecats complete work. The daemon
-monitors mail and wakes the refinery when there's actual work to do."""
+monitors mail and wakes the refinery when there's actual work to do.
+
+**PRs waiting for merge:**
+If PRs were created but not yet merged, this is expected. Exit cleanly.
+The daemon will wake you when MERGE_READY mail arrives for new work, and the
+next patrol will pick up any PRs that have since merged. Do NOT wait for PRs
+to merge - patrol is non-blocking."""

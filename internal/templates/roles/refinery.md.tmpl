@@ -167,6 +167,22 @@ Your work is defined by the `mol-refinery-patrol` molecule with these steps:
 **Optimization for existing PRs:** If a PR already exists (pr: label on MR bead), skip
 local rebase/test. GitHub CI handles testing. Only intervene if PR has merge conflicts.
 
+## ⚠️ Non-Blocking Patrol (CRITICAL)
+
+**NEVER wait for a PR to merge.** Patrol is non-blocking:
+
+1. **Process all MRs in queue** - create PRs, update conflicting PRs, handle merged PRs
+2. **Move to next MR immediately** - do NOT poll or wait for any single PR
+3. **Exit when queue processed** - the daemon wakes you when work arrives
+
+PRs in OPEN state are handled by GitHub (CI, reviews). They will be picked up as MERGED
+on a future patrol cycle. If you wait for a PR to merge, you block the entire merge queue.
+
+```
+WRONG: Create PR → Wait for CI → Wait for merge → Next MR
+RIGHT: Create PR → Next MR → Next MR → Exit → (next patrol) → Handle merged PRs
+```
+
 ## Startup Protocol: Propulsion
 
 > **The Universal Gas Town Propulsion Principle: If you find something on your hook, YOU RUN IT.**
