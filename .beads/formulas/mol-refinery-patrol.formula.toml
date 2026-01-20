@@ -30,16 +30,16 @@ Witness                    Refinery                      Git
    │                          │                           │
 ```
 
-After successful merge, Refinery sends MERGED mail back to Witness so it can
-complete cleanup (nuke the polecat worktree)."""
+For protected branches, PRs are created and tracked via gh:pr gates. The poll-pr-gates
+plugin monitors PR status and closes gates when PRs merge, triggering GATE_CLEARED mail."""
 formula = "mol-refinery-patrol"
-version = 9
+version = 10
 
 [[steps]]
 id = "inbox-check"
 title = "Check refinery mail"
 description = """
-Check mail for MERGE_READY submissions, escalations, and messages.
+Check mail for MERGE_READY submissions, gate notifications, and messages.
 
 ```bash
 gt mail inbox
@@ -70,6 +70,48 @@ in merge-push step to send MERGED notification, close the MR bead, and archive t
 
 Mark as read. The work will be processed in queue-scan/process-branch.
 **Do NOT archive yet** - archive after merge/reject decision in merge-push step.
+
+**GATE_CLEARED** (from poll-pr-gates plugin via gt gate wake):
+A PR has merged. Execute post-merge cleanup:
+
+```bash
+# Extract gate ID from mail subject/body
+GATE_ID=<from mail>
+
+# Find MR bead with this gate label
+MR_BEAD=$(bd list --label "gate:${GATE_ID}" --json | jq -r '.[0].id')
+
+if [ -z "$MR_BEAD" ]; then
+  echo "Warning: No MR bead found for gate ${GATE_ID}"
+  gt mail archive <message-id>
+  # Continue - gate may have been from different workflow
+else
+  # Get PR number and branch from MR bead
+  MR_JSON=$(bd show "$MR_BEAD" --json)
+  PR_NUMBER=$(echo "$MR_JSON" | jq -r '.[0].labels[]? | select(startswith("pr:"))' | sed 's/pr://' | head -1)
+  BRANCH=$(echo "$MR_JSON" | jq -r '.[0].description' | grep -E "^branch:" | cut -d' ' -f2)
+  POLECAT=$(echo "$MR_JSON" | jq -r '.[0].description' | grep -E "^polecat:" | cut -d' ' -f2)
+  ISSUE=$(echo "$MR_JSON" | jq -r '.[0].description' | grep -E "^issue:" | cut -d' ' -f2)
+  RIG=$(echo "$MR_JSON" | jq -r '.[0].description' | grep -E "^rig:" | cut -d' ' -f2)
+
+  # Send MERGED notification to witness
+  gt mail send "${RIG}/witness" -s "MERGED ${POLECAT}" -m "Branch: ${BRANCH}
+Issue: ${ISSUE}
+PR-Number: ${PR_NUMBER}
+Merged-At: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+  # Close MR bead
+  bd close "$MR_BEAD" --reason "Merged via PR #${PR_NUMBER}"
+
+  # Find and archive the original MERGE_READY mail for this MR
+  # (may need to search by branch or MR bead reference)
+
+  # Delete remote branch if still exists
+  git push origin --delete "$BRANCH" 2>/dev/null || true
+
+  gt mail archive <message-id>
+fi
+```
 
 **PATROL: Wake up**:
 Witness detected MRs waiting but refinery idle. Acknowledge and archive:
@@ -111,16 +153,28 @@ as branches may exist without MR beads, or MR beads may exist for already-merged
 
 If queue empty, skip to context-check step.
 
-For each MR in the queue, verify the branch still exists:
+For each MR in the queue:
+
+**Step 1: Check for existing gate (protected branch workflow)**
+```bash
+GATE_LABEL=$(bd show <mr-bead-id> --json | jq -r '.[0].labels[]? | select(startswith("gate:"))' | head -1)
+```
+
+If gate exists: This MR has a PR waiting for merge. Skip processing - the poll-pr-gates
+plugin will close the gate when the PR merges.
+
+**Step 2: Verify branch exists (for MRs without gates)**
 ```bash
 git branch -r | grep <branch>
 ```
 
-If branch doesn't exist for a queued MR:
+If branch doesn't exist for a queued MR without a gate:
 - Close the MR bead: `bd close <mr-id> --reason "Branch no longer exists"`
 - Remove from processing queue
 
-Track verified MR list for this cycle."""
+Track:
+- MRs with gates (skip - waiting for PR merge)
+- MRs without gates (process this cycle)"""
 
 [[steps]]
 id = "detect-default-branch"
@@ -129,9 +183,8 @@ needs = ["queue-scan"]
 description = """
 Detect the repository's default branch ONCE at the start of processing.
 
-**⚠️ CRITICAL: This is an INTERNAL variable, not a shell variable.**
+**CRITICAL: This is an INTERNAL variable, not a shell variable.**
 You must remember this value and use it in ALL subsequent steps.
-Shell variables do NOT persist across steps - you must track this yourself.
 
 **Step 1: Detect the default branch**
 ```bash
@@ -150,7 +203,6 @@ After running the command, state clearly:
 This value is used in:
 - `process-branch`: rebase target (`origin/<DEFAULT_BRANCH>`)
 - `merge-push`: PR base branch (`--base "<DEFAULT_BRANCH>"`)
-- `patrol-cleanup`: verification queries
 
 **Why detect here?** The default branch varies by repository. Hardcoding "main" breaks
 repos using "master", "develop", or custom branch names. Detect once, use everywhere."""
@@ -160,9 +212,9 @@ id = "detect-repo-protection"
 title = "Detect repository branch protection"
 needs = ["detect-default-branch"]
 description = """
-Detect branch protection status ONCE at the start of processing - this determines the merge strategy for ALL items.
+Detect branch protection status ONCE at the start of processing.
 
-**CRITICAL**: This MUST complete before processing any branches. Do NOT skip this step.
+**CRITICAL**: This MUST complete before processing any branches.
 
 **Step 1: Get repo info**
 ```bash
@@ -172,9 +224,8 @@ echo "Repo: $REPO_INFO"
 
 **Step 2: Check protection status**
 
-Using the `DEFAULT_BRANCH` value you recorded in the detect-default-branch step:
+Using the `DEFAULT_BRANCH` value you recorded:
 ```bash
-# Replace <DEFAULT_BRANCH> with the actual branch name you detected
 gh api "repos/${REPO_INFO}/branches/<DEFAULT_BRANCH>/protection" 2>/dev/null
 ```
 
@@ -184,150 +235,50 @@ gh api "repos/${REPO_INFO}/branches/<DEFAULT_BRANCH>/protection" 2>/dev/null
 
 State clearly: "Branch protection for [DEFAULT_BRANCH]: [true/false]"
 
-**Step 3: Verify detection succeeded**
-- If REPO_INFO is empty or malformed, STOP and investigate
-- If the gh api call fails with non-404 error, STOP and investigate
-- Only proceed when you have a definitive true/false for BRANCH_PROTECTED
-
 **IMPORTANT**: Track BRANCH_PROTECTED for the entire patrol cycle. This value determines:
-- PROTECTED (true): Use PR-based workflow for ALL merges
-- UNPROTECTED (false): Use direct push workflow
-
-**Why detect early?** Branch protection determines the ENTIRE merge strategy. Detecting late
-leads to wasted rebase work and potential accidental direct pushes to protected branches."""
-
-[[steps]]
-id = "check-mr-pr-status"
-title = "Check existing PR status for MR items"
-needs = ["detect-repo-protection"]
-description = """
-For protected branches, check if MR beads already have associated PRs before processing.
-
-**Skip this step if BRANCH_PROTECTED=false** (unprotected repos don't use PRs).
-
-For each MR in the queue:
-
-**Step 1: Check for PR label on MR bead**
-```bash
-PR_LABEL=$(bd show <mr-bead-id> --json | jq -r '.[0].labels[]? | select(startswith("pr:"))' | head -1)
-```
-
-**Step 2: Determine PR state**
-```bash
-if [ -n "$PR_LABEL" ]; then
-    PR_NUMBER="${PR_LABEL#pr:}"
-    PR_JSON=$(gh pr view "$PR_NUMBER" --json state,mergedAt,url 2>/dev/null)
-    PR_STATE=$(echo "$PR_JSON" | jq -r '.state')
-else
-    # Check GitHub directly
-    PR_JSON=$(gh pr list --head "<polecat-branch>" --state all --json number,state,mergedAt,url --jq '.[0]' 2>/dev/null)
-    if [ -z "$PR_JSON" ] || [ "$PR_JSON" = "null" ]; then
-        PR_STATE="NONE"
-    else
-        PR_STATE=$(echo "$PR_JSON" | jq -r '.state')
-        PR_NUMBER=$(echo "$PR_JSON" | jq -r '.number')
-        # Backfill the pr: label and add checked: timestamp
-        bd update <mr-bead-id> --add-label="pr:${PR_NUMBER}" --add-label="checked:$(date -u +%Y-%m-%dT%H-%M-%SZ)"
-    fi
-fi
-```
-
-**Step 3: Categorize MRs by PR state**
-
-| PR State | Action |
-|----------|--------|
-| **NONE** | Needs full processing: rebase, test, create PR |
-| **OPEN** | Skip rebase/test - PR already in GitHub workflow (see below) |
-| **MERGED** | Skip rebase/test - go directly to cleanup |
-| **CLOSED** | Skip rebase/test - go directly to close MR bead |
-
-**For OPEN PRs - check mergeable status:**
-```bash
-PR_MERGEABLE=$(gh pr view $PR_NUMBER --json mergeable -q '.mergeable')
-```
-- `MERGEABLE` or `UNKNOWN` → Skip entirely, PR is waiting for CI/reviews
-- `CONFLICTING` → Needs rebase update only (no local tests needed, CI will run)
-
-**⚠️ CRITICAL: DO NOT WAIT for PR to merge.** Move to the next MR in the queue immediately.
-GitHub handles CI checks and reviews asynchronously. The PR will be picked up as MERGED
-on a future patrol cycle. Patrol is non-blocking - process all MRs, create/update PRs, then exit.
-
-**Update checked: timestamp for OPEN PRs:**
-```bash
-# Remove old checked label if exists, add new one
-OLD_CHECKED=$(bd show <mr-bead-id> --json | jq -r '.[0].labels[]? | select(startswith("checked:"))' | head -1)
-[ -n "$OLD_CHECKED" ] && bd update <mr-bead-id> --remove-label="$OLD_CHECKED"
-bd update <mr-bead-id> --add-label="checked:$(date -u +%Y-%m-%dT%H-%M-%SZ)"
-```
-
-Track for each MR:
-- mr_bead_id
-- branch
-- pr_state (NONE/OPEN/MERGED/CLOSED)
-- pr_number (if exists)
-- pr_mergeable (for OPEN PRs only)
-
-**Why check early?** Once a PR exists, GitHub CI handles testing. No need to duplicate
-locally. Only intervene if PR has conflicts that need rebasing."""
+- PROTECTED (true): Use PR-based workflow with gh:pr gates
+- UNPROTECTED (false): Use direct push workflow"""
 
 [[steps]]
 id = "process-branch"
 title = "Mechanical rebase"
-needs = ["check-mr-pr-status"]
+needs = ["detect-repo-protection"]
 description = """
-Pick next branch from queue. Attempt mechanical rebase on current default branch.
+Pick next branch from queue (MRs without gates only). Attempt mechanical rebase.
 
-**Pre-check based on PR state from check-mr-pr-status step:**
-
-| PR State | Mergeable | Action |
-|----------|-----------|--------|
-| MERGED | - | Skip to merge-push for cleanup |
-| CLOSED | - | Skip to merge-push for cleanup |
-| OPEN | MERGEABLE/UNKNOWN | **Skip entirely** - PR in GitHub workflow |
-| OPEN | CONFLICTING | Rebase only, push to update PR, skip tests |
-| NONE | - | Full processing: rebase, test, create PR |
-
-**For OPEN+CONFLICTING:** Only rebase and push to update the PR branch. Do NOT run tests
-locally - GitHub CI will run them after the push.
-
-**For PR_STATE=NONE (needs full processing):**
+**Pre-check**: Skip MRs that have a gate label - they're waiting for PR merge.
 
 **Step 1: Checkout and attempt rebase**
 
-Use the `DEFAULT_BRANCH` value you recorded in detect-default-branch:
+Use the `DEFAULT_BRANCH` value you recorded:
 ```bash
 git checkout -b temp origin/<polecat-branch>
-# Replace <DEFAULT_BRANCH> with the actual branch name (e.g., "main", "develop")
 git rebase origin/<DEFAULT_BRANCH>
 ```
 
 **Step 2: Check rebase result**
 
-The rebase exits with:
 - Exit code 0: Success - proceed to run-tests
 - Exit code 1 (conflicts): Conflict detected - proceed to Step 3
 
-To detect conflict state after rebase fails:
+To detect conflict state:
 ```bash
-# Check if we're in a conflicted rebase state
 ls .git/rebase-merge 2>/dev/null && echo "CONFLICT_STATE"
 ```
 
 **Step 3: Handle conflicts (if any)**
 
-If rebase SUCCEEDED (exit code 0):
-- Skip to run-tests step (continue normal merge flow)
+If rebase SUCCEEDED: Skip to run-tests step.
 
 If rebase FAILED with conflicts:
 
-1. **Abort the rebase** (DO NOT leave repo in conflicted state):
+1. **Abort the rebase**:
 ```bash
 git rebase --abort
 ```
 
 2. **Record conflict metadata**:
 ```bash
-# Capture default branch SHA for reference (use your recorded DEFAULT_BRANCH)
 MAIN_SHA=$(git rev-parse origin/<DEFAULT_BRANCH>)
 BRANCH_SHA=$(git rev-parse origin/<polecat-branch>)
 ```
@@ -342,25 +293,16 @@ Original MR: <mr-bead-id>
 Branch: <polecat-branch>
 Original Issue: <issue-id>
 Conflict with default branch at: ${MAIN_SHA}
-Branch SHA: ${BRANCH_SHA}
 
 ## Instructions
-1. Clone/checkout the branch
-2. Rebase on current default branch: git rebase origin/<default-branch>
+1. Checkout the branch
+2. Rebase on current default branch
 3. Resolve conflicts
-4. Force push: git push -f origin <branch>
-5. Close this task when done
-
-The MR will be re-queued for processing after conflicts are resolved."
+4. Force push
+5. Close this task when done"
 ```
 
-4. **Skip this MR** (do NOT delete branch or close MR bead):
-- Leave branch intact for conflict resolution
-- Leave MR bead open (will be re-processed after resolution)
-- Continue to loop-check for next branch
-
-**CRITICAL**: Never delete a branch that has conflicts. The branch contains
-the original work and must be preserved for conflict resolution.
+4. **Skip this MR** - leave branch and MR bead intact for resolution.
 
 Track: rebase result (success/conflict), conflict task ID if created."""
 
@@ -387,70 +329,54 @@ description = """
 If tests PASSED: This step auto-completes. Proceed to merge.
 
 If tests FAILED:
-1. Diagnose: Is this a branch regression or pre-existing on the default branch?
+1. Diagnose: Is this a branch regression or pre-existing?
 2. If branch caused it:
    - Abort merge
    - Notify polecat: "Tests failing. Please fix and resubmit."
    - Skip to loop-check
-3. If pre-existing on the default branch:
-   - Option A: Fix it yourself (you're the Engineer!)
+3. If pre-existing:
+   - Option A: Fix it yourself
    - Option B: File a bead: bd create --type=bug --priority=1 --title="..."
 
 **GATE REQUIREMENT**: You CANNOT proceed to merge-push without:
 - Tests passing, OR
 - Fix committed, OR
-- Bead filed for the failure
-
-This is non-negotiable. Never disavow. Never "note and proceed." """
+- Bead filed for the failure"""
 
 [[steps]]
 id = "merge-push"
 title = "Merge and push to default branch"
 needs = ["handle-failures"]
 description = """
-Merge to default branch. Path determined by BRANCH_PROTECTED from detect-repo-protection step.
+Merge to default branch. Path determined by BRANCH_PROTECTED.
 
-**PREREQUISITE**: BRANCH_PROTECTED must be set from the detect-repo-protection step (runs early in cycle).
-If BRANCH_PROTECTED is not set, STOP - do not proceed with any merge attempt.
-
-**PR_STATE from check-mr-pr-status**: Use this to handle already-merged or closed PRs efficiently.
+**PREREQUISITE**: BRANCH_PROTECTED must be set from detect-repo-protection step.
 
 ---
 
 ## UNPROTECTED PATH (BRANCH_PROTECTED=false)
 
-If unprotected, use the direct merge-push workflow:
+Direct merge-push workflow:
 
 **Step A-1: Merge and Push**
-
-Use your recorded `DEFAULT_BRANCH` value:
 ```bash
-# Replace <DEFAULT_BRANCH> with actual branch name (e.g., "main", "develop")
 git checkout <DEFAULT_BRANCH>
 git merge --ff-only temp
 git push origin <DEFAULT_BRANCH>
 ```
 
-**Step A-2: Send MERGED Notification (REQUIRED)**
+**Step A-2: Send MERGED Notification**
 ```bash
 gt mail send <rig>/witness -s "MERGED <polecat-name>" -m "Branch: <branch>
 Issue: <issue-id>
 Merged-At: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 ```
 
-**Step A-3: Close MR Bead (REQUIRED)**
-
-⚠️ **VERIFICATION BEFORE CLOSING**: Confirm the work is actually on the default branch:
+**Step A-3: Close MR Bead**
 ```bash
-# Use your recorded DEFAULT_BRANCH value
-git log origin/<DEFAULT_BRANCH> --oneline | grep "<issue-id>"
+git log origin/<DEFAULT_BRANCH> --oneline | grep "<issue-id>"  # Verify
+bd close <mr-bead-id> --reason "Merged to <DEFAULT_BRANCH>"
 ```
-
-```bash
-bd close <mr-bead-id> --reason "Merged to <DEFAULT_BRANCH> at $(git rev-parse --short HEAD)"
-```
-
-⚠️ **DO NOT PROCEED TO CLEANUP UNTIL STEPS A-2 and A-3 ARE COMPLETE**
 
 **Step A-4: Archive and Cleanup**
 ```bash
@@ -465,167 +391,68 @@ Skip to loop-check.
 
 ## PROTECTED PATH (BRANCH_PROTECTED=true)
 
-If protected, use the PR-based workflow:
+PR-based workflow with gh:pr gate:
 
-**Step B-1: Check for Existing PR**
-
+**Step B-1: Push rebased branch**
 ```bash
-# First, check if MR bead already has a PR label (fast path)
-PR_LABEL=$(bd show <mr-bead-id> --json | jq -r '.[0].labels[]? | select(startswith("pr:"))' | head -1)
-
-if [ -n "$PR_LABEL" ]; then
-    # PR was previously created - extract number from label
-    PR_NUMBER="${PR_LABEL#pr:}"
-
-    # Query current PR state from GitHub
-    PR_JSON=$(gh pr view "$PR_NUMBER" --json state,mergedAt,url 2>/dev/null)
-    PR_STATE=$(echo "$PR_JSON" | jq -r '.state')
-    PR_URL=$(echo "$PR_JSON" | jq -r '.url')
-else
-    # No PR label - check GitHub directly
-    PR_JSON=$(gh pr list --head "<polecat-branch>" --state all --json number,state,mergedAt,url --jq '.[0]' 2>/dev/null)
-
-    if [ -z "$PR_JSON" ] || [ "$PR_JSON" = "null" ]; then
-        PR_STATE="NONE"
-    else
-        PR_STATE=$(echo "$PR_JSON" | jq -r '.state')
-        PR_NUMBER=$(echo "$PR_JSON" | jq -r '.number')
-        PR_URL=$(echo "$PR_JSON" | jq -r '.url')
-
-        # Backfill the pr: label and add checked: timestamp for future cycles
-        bd update <mr-bead-id> --add-label="pr:${PR_NUMBER}" --add-label="checked:$(date -u +%Y-%m-%dT%H-%M-%SZ)"
-    fi
-fi
+git push -f origin temp:<polecat-branch>
 ```
 
-**Step B-2: Handle PR State**
-
-| PR State | Action |
-|----------|--------|
-| **NONE** | Push rebased branch, create PR, skip to loop-check |
-| **OPEN** | Check for merge conflicts; if clean, skip to loop-check |
-| **MERGED** | Execute post-merge cleanup (MERGED mail, close MR, archive) |
-| **CLOSED** | Close MR bead with reason, archive mail, clean up |
-
----
-
-### NONE - Create PR
-
-Use your recorded `DEFAULT_BRANCH` value for the `--base` parameter:
+**Step B-2: Create PR**
 ```bash
-# Push rebased commits to origin (update the polecat branch)
-git push -f origin temp:<polecat-branch>
-
-# Create PR - CRITICAL: Use the DEFAULT_BRANCH you detected, NOT hardcoded "main"
-PR_URL=$(gh pr create \\
-    --head "<polecat-branch>" \\
-    --base "<DEFAULT_BRANCH>" \\
-    --title "[<issue-id>] <issue-title>" \\
+PR_URL=$(gh pr create \
+    --head "<polecat-branch>" \
+    --base "<DEFAULT_BRANCH>" \
+    --title "[<issue-id>] <issue-title>" \
     --body "## Merge Request
 
 Original Issue: <issue-id>
 MR Bead: <mr-bead-id>
 Polecat: <polecat-name>
+Rig: <rig>
 
 ---
 *Auto-created by Refinery. Tests passed locally.*")
 
 PR_NUMBER=$(gh pr view "<polecat-branch>" --json number -q '.number')
-
-# Add PR number and checked timestamp as labels to MR bead (audit trail + easy lookup)
-bd update <mr-bead-id> --add-label="pr:${PR_NUMBER}" --add-label="checked:$(date -u +%Y-%m-%dT%H-%M-%SZ)"
-
-# Cleanup temp branch (required for next process-branch iteration)
-git branch -D temp
-
-# Do NOT archive MERGE_READY mail - work not complete
-# Do NOT close MR bead - work not complete
-# Skip to loop-check
+echo "Created PR #${PR_NUMBER}: ${PR_URL}"
 ```
 
----
-
-### OPEN - Continue to Next MR (Do NOT Wait)
-
-**⚠️ DO NOT WAIT for PR to merge.** GitHub handles CI/reviews asynchronously.
-Continue processing other MRs. This PR will be picked up as MERGED on a future patrol cycle.
-
+**Step B-3: Create gh:pr gate for async tracking**
 ```bash
-# Check if PR has merge conflicts
-PR_MERGEABLE=$(gh pr view <polecat-branch> --json mergeable -q '.mergeable')
-
-if [ "$PR_MERGEABLE" = "CONFLICTING" ]; then
-    # PR has conflicts - update it with rebased commits
-    git push -f origin temp:<polecat-branch>
-    echo "Updated PR with rebased commits"
-fi
-
-# Update checked: timestamp (remove old, add new)
-OLD_CHECKED=$(bd show <mr-bead-id> --json | jq -r '.[0].labels[]? | select(startswith("checked:"))' | head -1)
-[ -n "$OLD_CHECKED" ] && bd update <mr-bead-id> --remove-label="$OLD_CHECKED"
-bd update <mr-bead-id> --add-label="checked:$(date -u +%Y-%m-%dT%H-%M-%SZ)"
-
-# Cleanup temp branch (required for next process-branch iteration)
-git branch -D temp
-
-# PR is in GitHub workflow - DO NOT WAIT for merge
-# Continue to next MR in queue immediately
-# Skip to loop-check
+GATE_ID=$(bd gate create --await "gh:pr:${PR_NUMBER}" \
+    --title "PR #${PR_NUMBER} merge" \
+    --description "Waiting for PR to be reviewed and merged" \
+    --json | jq -r '.id')
+echo "Created gate: ${GATE_ID}"
 ```
 
----
-
-### MERGED - Post-Merge Cleanup
-
+**Step B-4: Label MR bead with PR and gate references**
 ```bash
-# 1. Send MERGED mail to witness (include PR info)
-gt mail send <rig>/witness -s "MERGED <polecat-name>" -m "Branch: <polecat-branch>
-Issue: <issue-id>
-PR-Number: ${PR_NUMBER}
-PR-URL: ${PR_URL}
-Merged-At: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-
-# 2. Close MR bead
-bd close <mr-bead-id> --reason "Merged via PR #${PR_NUMBER}"
-
-# 3. Archive MERGE_READY mail
-gt mail archive <merge-ready-message-id>
-
-# 4. Cleanup local temp branch
-git branch -D temp
-
-# 5. Verify remote branch deleted (GitHub auto-delete or manual)
-if git ls-remote --exit-code origin refs/heads/<polecat-branch> &>/dev/null; then
-    git push origin --delete <polecat-branch>
-fi
+bd update <mr-bead-id> \
+    --add-label="pr:${PR_NUMBER}" \
+    --add-label="gate:${GATE_ID}"
 ```
 
----
-
-### CLOSED (Not Merged) - Abort
-
+**Step B-5: Cleanup and continue**
 ```bash
-# 1. Get close reason from GitHub
-CLOSE_INFO=$(gh pr view <polecat-branch> --json body,closedAt -q '"Closed at: \\(.closedAt)"')
-
-# 2. Close MR bead
-bd close <mr-bead-id> --reason "PR closed without merge. ${CLOSE_INFO}"
-
-# 3. Archive MERGE_READY mail
-gt mail archive <merge-ready-message-id>
-
-# 4. Cleanup
 git branch -D temp
-git push origin --delete <polecat-branch> 2>/dev/null || true
 ```
+
+**DO NOT archive MERGE_READY mail** - work not complete yet.
+**DO NOT close MR bead** - waiting for PR merge.
+**DO NOT wait** - continue to next MR immediately.
+
+The poll-pr-gates plugin will close the gate when the PR merges,
+triggering GATE_CLEARED mail which handles post-merge cleanup.
+
+Skip to loop-check.
 
 ---
 
-**VERIFICATION GATE (Both Paths)**: You CANNOT proceed to loop-check without:
-- For UNPROTECTED: MERGED mail sent, MR bead closed, mail archived
-- For PROTECTED+MERGED: MERGED mail sent, MR bead closed, mail archived
-- For PROTECTED+NONE/OPEN: PR created/updated, MR bead has pr: label
-- For PROTECTED+CLOSED: MR bead closed, mail archived"""
+**VERIFICATION GATE**:
+- UNPROTECTED: MERGED mail sent, MR bead closed, mail archived
+- PROTECTED: PR created, gate created, MR bead labeled"""
 
 [[steps]]
 id = "loop-check"
@@ -635,23 +462,17 @@ description = """
 More branches to process?
 
 **Entry paths:**
-- Normal: After successful merge-push (direct or via merged PR)
+- Normal: After successful merge-push (direct or PR created)
 - Conflict-skip: After process-branch created conflict-resolution task
-- PR-waiting: After creating or updating a PR (protected branch path)
 
 If yes: Return to process-branch with next branch.
 If no: Continue to generate-summary.
 
 **Track for this cycle:**
-- branches_direct_merged: count and names of branches merged via direct push (unprotected)
-- branches_pr_created: count and names of PRs created this cycle (protected, new)
-- branches_pr_merged: count and names of PRs that completed merge this cycle
-- branches_pr_waiting: count and names of PRs still open, waiting for checks/reviews
-- branches_pr_closed: count and names of PRs closed without merge this cycle
-- branches_conflict: count and names of branches skipped due to conflicts
-- conflict_tasks: IDs of conflict-resolution tasks created
-
-This tracking feeds into generate-summary for the patrol digest."""
+- branches_direct_merged: count (unprotected path)
+- branches_pr_created: count and PR numbers (protected path)
+- branches_conflict: count (skipped due to conflicts)
+- branches_waiting: count (MRs with existing gates, skipped)"""
 
 [[steps]]
 id = "generate-summary"
@@ -660,41 +481,29 @@ needs = ["loop-check"]
 description = """
 Summarize this patrol cycle.
 
-**VERIFICATION**: Before generating summary, confirm for each merged branch:
+**VERIFICATION**: Before generating summary, confirm for direct merges:
 - [ ] MERGED mail was sent to witness
 - [ ] MR bead was closed
 - [ ] MERGE_READY mail archived
 
-If any notifications or archiving were missed, do them now!
+If any were missed, do them now!
 
 Include in summary:
 
 **Direct Merges (unprotected):**
-- Branches direct merged (count, names)
-- MERGED mails sent (count - should match direct merges)
-- MR beads closed (count - should match direct merges)
-- MERGE_READY mails archived (count - should match direct merges)
+- Branches merged (count, names)
+- MERGED mails sent
 
 **PR Workflow (protected):**
-- PRs created this cycle (count, PR numbers, branch names)
-- PRs merged this cycle (count, PR numbers) - includes MERGED mails sent
-- PRs waiting for checks/reviews (count, PR numbers)
-- PRs closed without merge (count, PR numbers)
+- PRs created this cycle (count, PR numbers)
+- Gates created (count, gate IDs)
+- MRs waiting for existing PRs (count)
 
 **Other:**
 - Test results (pass/fail)
 - Branches with conflicts (count, names)
 - Conflict-resolution tasks created (IDs)
-- Issues filed (if any)
-- Any escalations sent
-
-**Conflict tracking is important** for monitoring MQ health. If many branches
-conflict, it may indicate the default branch is moving too fast or branches are too stale.
-
-**PR tracking is important** for monitoring protected branch workflows. If many PRs
-are waiting, it may indicate CI is slow or reviews are needed.
-
-This becomes the digest when the patrol is squashed."""
+- GATE_CLEARED mails processed (post-merge cleanups)"""
 
 [[steps]]
 id = "context-check"
@@ -726,65 +535,32 @@ Inbox should contain ONLY:
 - Unprocessed MERGE_READY messages (will process next cycle)
 - Active work items
 
-**Step 2: Archive any stale messages**
+**Step 2: Archive stale messages**
 
 Look for messages that were processed but not archived:
-- PATROL: Wake up that was acknowledged → archive
-- HELP/Blocked that was handled → archive
-- MERGE_READY where merge completed but archive was missed → archive
+- PATROL: Wake up that was acknowledged -> archive
+- HELP/Blocked that was handled -> archive
+- GATE_CLEARED that was processed -> archive
 
 ```bash
-# For each stale message found:
 gt mail archive <message-id>
 ```
 
 **Step 3: Check for orphaned MR beads**
 
-Look for open MR beads with no corresponding branch:
+Look for open MR beads with no corresponding branch AND no gate:
 ```bash
 bd list --type=merge-request --status=open
 ```
 
 For each open MR bead:
-1. Check if branch exists: `git ls-remote origin refs/heads/<branch>`
-2. If branch gone, verify work is on default branch: `git log origin/<DEFAULT_BRANCH> --oneline | grep "<source_issue>"`
-   (Use your recorded DEFAULT_BRANCH value)
-3. If work on default branch → close MR with reason "Merged (verified on default branch)"
-4. If work NOT on default branch → investigate before closing:
-   - Check source_issue validity (should be gt-xxxxx, not branch name)
-   - Search reflog/dangling commits if possible
-   - If unverifiable, close with reason "Unverifiable - no audit trail"
-   - File bead if this indicates lost work
+1. Check if it has a gate label (waiting for PR) -> skip
+2. Check if branch exists: `git ls-remote origin refs/heads/<branch>`
+3. If branch gone, verify work on default branch
+4. If verified merged -> close MR
+5. If unverifiable -> investigate
 
-**NEVER close an MR bead without verifying the work landed or is unrecoverable.**
-
-**Step 4: Check for orphaned PRs (protected branch repos)**
-
-For repositories with protected default branches, check for PRs with no corresponding MR bead:
-
-```bash
-# Get repo info
-REPO_INFO=$(gh repo view --json owner,name -q '"\\(.owner.login)/\\(.name)"')
-
-# List open PRs created by refinery (auto-created)
-OPEN_PRS=$(gh pr list --state open --json number,headRefName,body --jq '.[] | select(.body | contains("Auto-created by Refinery"))')
-```
-
-For each open PR:
-1. Extract MR bead ID from PR body (if present)
-2. Check if MR bead exists: `bd show <mr-bead-id>`
-3. If MR bead doesn't exist or is closed:
-   - This is an orphaned PR
-   - Check if branch has been merged: `git branch -r --merged origin/<DEFAULT_BRANCH> | grep <branch>`
-     (Use your recorded DEFAULT_BRANCH value)
-   - If merged → close PR with comment "Work merged. MR bead closed."
-   - If not merged → flag for investigation (branch may need manual review)
-
-**Note**: This step only applies to repos with protected branches. Skip if BRANCH_PROTECTED
-from detect-repo-protection step is false.
-
-**Goal**: Inbox should have ≤3 active messages at end of cycle.
-Keep only: pending MRs in queue."""
+**Goal**: Inbox should have <=3 active messages at end of cycle."""
 
 [[steps]]
 id = "burn-or-loop"
@@ -793,82 +569,51 @@ needs = ["patrol-cleanup"]
 description = """
 End of patrol cycle decision.
 
-**Step 1: Estimate remaining context**
-
-Ask yourself:
-- Have I processed many branches this cycle?
-- Is the conversation getting long?
-- Am I starting to lose track of earlier context?
-
-Rule of thumb: If you've done 3+ merges or processed significant cleanup work,
-it's time for a fresh session.
-
-**Step 2: Decision tree**
-
 ```
-                    ┌─────────────────┐
-                    │  Queue empty?   │
-                    └────────┬────────┘
-                             │
-              ┌──────────────┴──────────────┐
-              │ YES                         │ NO
-              ▼                             ▼
-    ┌─────────────────────┐      ┌─────────────────────┐
-    │ EXIT CLEANLY        │      │ Context HIGH?       │
-    │ (no handoff)        │      └──────────┬──────────┘
-    │ Daemon will wake    │                 │
-    │ when work arrives   │      ┌──────────┴──────────┐
-    └─────────────────────┘      │ YES                 │ NO
-                                 ▼                     ▼
-                      ┌──────────────────┐  ┌──────────────────┐
-                      │ gt handoff       │  │ Loop: spawn wisp │
-                      │ (successor       │  │ return to        │
-                      │ continues queue) │  │ inbox-check      │
-                      └──────────────────┘  └──────────────────┘
+                    +------------------+
+                    |  Queue empty?    |
+                    +--------+---------+
+                             |
+              +--------------+--------------+
+              | YES                         | NO
+              v                             v
+    +---------------------+      +---------------------+
+    | EXIT CLEANLY        |      | Context HIGH?       |
+    | (no handoff)        |      +----------+----------+
+    | Daemon will wake    |                 |
+    | when work arrives   |      +----------+----------+
+    +---------------------+      | YES                 | NO
+                                 v                     v
+                      +------------------+  +------------------+
+                      | gt handoff       |  | Loop: spawn wisp |
+                      | (successor       |  | return to        |
+                      | continues queue) |  | inbox-check      |
+                      +------------------+  +------------------+
 ```
 
 **If queue EMPTY:**
 - Squash wisp with summary digest
-- **EXIT cleanly - DO NOT use gt handoff**
-- The daemon/witness will wake you when new MERGE_READY mail arrives
-- Prevents infinite empty patrol loops
+- EXIT cleanly - no handoff needed
+- Daemon/witness will wake when MERGE_READY mail arrives
 
 ```bash
 bd mol squash <wisp-id> --summary="Patrol complete: queue empty"
-# Just exit - no handoff needed
 ```
 
 **If queue NON-EMPTY AND context HIGH:**
-- Squash wisp with summary digest
-- Use `gt handoff` so successor can continue processing:
-
 ```bash
 gt handoff -s "Patrol handoff" -m "Context limit reached.
 Queue: N branches remaining
-Processed: X merges, Y PRs created
-Next: Continue processing queue"
+Processed: X merges, Y PRs created"
 ```
 
 **If queue NON-EMPTY AND context LOW:**
-- Squash this wisp to digest
-- Spawn fresh patrol wisp
-- Return to inbox-check
-
 ```bash
-bd mol squash <wisp-id> --summary="Patrol cycle: merged X branches"
+bd mol squash <wisp-id> --summary="Patrol cycle complete"
 bd mol spawn mol-refinery-patrol --wisp --assignee=refinery
-# Continue to inbox-check...
 ```
-
-**Why no handoff when queue empty?**
-Using `gt handoff` when queue is empty creates an infinite loop:
-handoff → gt prime → create patrol → find empty queue → handoff → repeat
-
-The witness sends MERGE_READY mail when polecats complete work. The daemon
-monitors mail and wakes the refinery when there's actual work to do.
 
 **PRs waiting for merge:**
 If PRs were created but not yet merged, this is expected. Exit cleanly.
-The daemon will wake you when MERGE_READY mail arrives for new work, and the
-next patrol will pick up any PRs that have since merged. Do NOT wait for PRs
-to merge - patrol is non-blocking."""
+The poll-pr-gates plugin monitors PR status. When PRs merge, GATE_CLEARED
+mail triggers post-merge cleanup on the next patrol cycle."""
