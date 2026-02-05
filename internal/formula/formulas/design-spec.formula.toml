@@ -1,0 +1,471 @@
+# Design Spec Workflow Formula
+#
+# A workflow-style formula that moves through sequential phases to produce
+# a focused, implementation-ready design document. Unlike the convoy design
+# formula (parallel exploration), this follows a linear refinement path.
+#
+# Usage:
+#   gt formula run design-spec --problem="Add retry logic to sling"
+#   gt formula run design-spec --problem="Redesign bead attachment flow"
+
+description = """
+Sequential design spec process: research, alternatives, analysis, decision, design, review.
+
+Each step builds on the previous, progressively narrowing from broad exploration
+to a focused, implementation-ready design document.
+
+## Steps (sequential execution)
+- **research**: Gather context, requirements, constraints
+- **alternatives**: Enumerate 2-4 viable approaches
+- **analysis**: Evaluate trade-offs for each alternative
+- **decision**: Select approach with justification
+- **design**: Write final implementation plan (chosen approach only)
+- **review**: Validate completeness, flag gaps, mark ready
+
+## Output Structure
+A .designs/<bead-id>-<short-title>/ directory containing:
+- research.md: Context and requirements
+- alternatives.md: Enumerated approaches (kept separate to avoid context bloat)
+- analysis.md: Trade-off evaluation
+- decision.md: Selection rationale
+- design.md: Final implementation plan (ONLY chosen approach)
+
+The design.md is the primary deliverable for implementation agents.
+Alternatives are preserved but kept separate to keep impl context lean.
+"""
+formula = "design-spec"
+type = "workflow"
+version = 1
+
+# Input variables - provided at runtime
+[inputs]
+[inputs.problem]
+description = "Problem statement or feature to design"
+type = "string"
+required = true
+
+[inputs.context]
+description = "Additional context (existing code, constraints, related issues)"
+type = "string"
+required = false
+
+[inputs.scope]
+description = "Scope hint: 'small' (1 file), 'medium' (package), 'large' (system)"
+type = "string"
+default = "medium"
+
+# short_title is derived from problem statement (max 8 words, kebab-case)
+
+# Output configuration
+[output]
+directory = ".designs/{{.bead_id}}-{{.short_title}}"
+step_pattern = "{{.step.id}}.md"
+final = "design.md"
+
+# Base prompt template - injected into all step prompts
+[prompts]
+base = """
+# Design Spec: {{.step.title}}
+
+You are working through a sequential design spec process.
+
+## Context
+- **Formula**: {{.formula_name}}
+- **Problem**: {{.problem}}
+- **Current Step**: {{.step.id}} ({{.step.title}})
+- **Scope**: {{.scope}}
+- **Output Directory**: {{.output.directory}}
+
+{{if .context}}
+## Additional Context
+{{.context}}
+{{end}}
+
+## Your Task
+{{.step.description}}
+
+## Output Location (MANDATORY)
+**Directory:** `{{.output.directory}}/`
+**File:** `{{.output.directory}}/{{.step.id}}.md`
+
+CRITICAL: You MUST write your output to the exact path above.
+- Create the directory if it doesn't exist
+- Do NOT write to any other location
+- The review step will verify files are in the correct location
+"""
+
+# Step definitions - executed sequentially
+[[steps]]
+id = "research"
+title = "Research"
+focus = "Context gathering and requirements discovery"
+description = """
+Gather all relevant context before proposing solutions.
+
+**Explore:**
+- Problem domain: What exactly needs to be solved?
+- Existing code: What patterns exist? What's already there?
+- Constraints: Technical limits, time, compatibility requirements
+- Dependencies: What does this touch? What touches this?
+- Prior art: Has this been attempted before? Similar solutions in codebase?
+- Stakeholder needs: Who uses this? What do they need?
+
+**Questions to answer:**
+- What is the core problem vs symptoms?
+- What are the hard constraints we cannot violate?
+- What are the soft constraints we'd prefer to meet?
+- What existing patterns should we follow?
+- What's out of scope?
+
+**Output structure:**
+```markdown
+# Research: {{.problem}}
+
+## Problem Statement
+(Clear, specific statement of what we're solving)
+
+## Requirements
+### Must Have
+### Should Have
+### Nice to Have
+
+## Constraints
+### Hard Constraints
+(Cannot be violated)
+### Soft Constraints
+(Prefer to meet)
+
+## Existing Patterns
+(Relevant code, conventions, prior art)
+
+## Dependencies
+(What this touches, what touches this)
+
+## Open Questions
+(Things needing clarification before proceeding)
+```
+
+**Deliverable:** research.md with comprehensive context
+"""
+
+[[steps]]
+id = "alternatives"
+needs = ["research"]
+title = "Alternatives"
+focus = "Enumerate viable approaches without evaluation"
+description = """
+Brainstorm 2-4 viable approaches. Do NOT evaluate yet—just enumerate.
+
+**Explore:**
+- Different architectural approaches
+- Build vs buy/reuse decisions
+- Simple vs comprehensive solutions
+- Incremental vs big-bang approaches
+- Trade-off dimensions (performance vs simplicity, etc.)
+
+**For each alternative, capture:**
+- Name (descriptive, memorable)
+- One-paragraph description
+- Key characteristics
+- What it optimizes for
+
+**Rules:**
+- Include at least one "simple/minimal" option
+- Include at least one "comprehensive" option
+- Don't evaluate pros/cons yet (that's next step)
+- Ensure alternatives are genuinely different, not variations
+
+**Output structure:**
+```markdown
+# Alternatives: {{.problem}}
+
+## Alternative 1: <Name>
+**Description:** (1 paragraph)
+**Optimizes for:** (What this prioritizes)
+**Key characteristics:**
+- ...
+
+## Alternative 2: <Name>
+...
+
+## Alternative 3: <Name>
+...
+
+(Optional: Alternative 4)
+```
+
+**Deliverable:** alternatives.md with 2-4 distinct approaches
+"""
+
+[[steps]]
+id = "analysis"
+needs = ["alternatives"]
+title = "Analysis"
+focus = "Evaluate trade-offs for each alternative"
+description = """
+Analyze each alternative objectively. Be thorough but fair.
+
+**For each alternative, evaluate:**
+- Pros: What does it do well?
+- Cons: What are the drawbacks?
+- Complexity: Implementation effort (Low/Medium/High)
+- Risk: What could go wrong? Likelihood?
+- Constraints fit: How well does it meet hard/soft constraints?
+- Maintenance burden: Long-term cost
+- Reversibility: How hard to change course later?
+
+**Questions to answer:**
+- Which constraints does each alternative violate (if any)?
+- What's the implementation effort for each?
+- What's the risk profile of each?
+- Are there hybrid options worth considering?
+
+**Output structure:**
+```markdown
+# Analysis: {{.problem}}
+
+## Alternative 1: <Name>
+
+### Pros
+- ...
+
+### Cons
+- ...
+
+### Complexity
+(Low/Medium/High with justification)
+
+### Risk Assessment
+| Risk | Likelihood | Impact | Mitigation |
+|------|------------|--------|------------|
+| ...  | ...        | ...    | ...        |
+
+### Constraints Fit
+- Hard constraint X: ✓ Met / ✗ Violated
+- Soft constraint Y: ✓ Met / ~ Partial
+
+## Alternative 2: <Name>
+...
+
+## Comparison Matrix
+| Criterion        | Alt 1 | Alt 2 | Alt 3 |
+|------------------|-------|-------|-------|
+| Complexity       | ...   | ...   | ...   |
+| Risk             | ...   | ...   | ...   |
+| Constraints fit  | ...   | ...   | ...   |
+| Reversibility    | ...   | ...   | ...   |
+```
+
+**Deliverable:** analysis.md with objective trade-off evaluation
+"""
+
+[[steps]]
+id = "decision"
+needs = ["analysis"]
+title = "Decision"
+focus = "Select recommended approach with justification"
+description = """
+Make a decision. Select the recommended approach and justify it.
+
+**Your task:**
+- Review the analysis
+- Select ONE recommended approach
+- Justify why it's the best fit
+- Explain why alternatives were rejected
+- Note any conditions that would change the decision
+
+**Decision criteria:**
+- Best fit for hard constraints
+- Best balance of complexity vs capability
+- Lowest risk for the value delivered
+- Best alignment with existing patterns
+- Most reversible if requirements change
+
+**Output structure:**
+```markdown
+# Decision: {{.problem}}
+
+## Recommendation
+**Selected:** Alternative N: <Name>
+
+## Justification
+(Why this is the best choice given constraints and requirements)
+
+## Why Not Others
+
+### Alternative X: <Name>
+**Rejected because:** (Specific reasons)
+
+### Alternative Y: <Name>
+**Rejected because:** (Specific reasons)
+
+## Conditions for Revisiting
+(What would change this decision?)
+
+## Confidence Level
+(High/Medium/Low with explanation)
+```
+
+**Deliverable:** decision.md with clear selection and rationale
+"""
+
+[[steps]]
+id = "design"
+needs = ["decision"]
+title = "Design"
+focus = "Write implementation-ready design for chosen approach"
+description = """
+Write the final design document. ONLY the chosen approach.
+
+**Important:**
+- This is what implementation agents will read
+- Do NOT include rejected alternatives (they're in separate files)
+- Be specific and actionable
+- Include enough detail to implement without guessing
+
+**Include:**
+- Executive summary (2-3 paragraphs)
+- Technical approach (architecture, components)
+- Interface design (API, CLI, config)
+- Data model (if applicable)
+- Implementation steps (ordered, concrete)
+- Acceptance criteria (how to verify it works)
+- Edge cases and error handling
+
+**Output structure:**
+```markdown
+# Design: {{.problem}}
+
+## Summary
+(2-3 paragraph executive summary)
+
+## Technical Approach
+
+### Overview
+(High-level architecture)
+
+### Components
+(Key pieces and responsibilities)
+
+### Interface
+(API/CLI/config design)
+
+### Data Model
+(Schema, types, storage - if applicable)
+
+## Implementation Plan
+
+### Step 1: <Title>
+(Concrete actions, files to modify)
+
+### Step 2: <Title>
+...
+
+## Acceptance Criteria
+- [ ] Criterion 1
+- [ ] Criterion 2
+...
+
+## Edge Cases
+| Case | Expected Behavior |
+|------|-------------------|
+| ...  | ...               |
+
+## Error Handling
+(How errors are surfaced and handled)
+
+## Future Considerations
+(Out of scope but worth noting for later)
+```
+
+**Deliverable:** design.md with implementation-ready specification
+"""
+
+[[steps]]
+id = "review"
+needs = ["design"]
+title = "Review"
+focus = "Validate completeness and mark ready for implementation"
+description = """
+Review the design for completeness, feasibility, and gaps.
+
+**CRITICAL: File Location Validation**
+Before any other validation, verify ALL design artifacts are in the correct location:
+
+1. **Check output directory exists:** `{{.output.directory}}/`
+2. **Verify ALL required files exist in that directory:**
+   - `{{.output.directory}}/research.md`
+   - `{{.output.directory}}/alternatives.md`
+   - `{{.output.directory}}/analysis.md`
+   - `{{.output.directory}}/decision.md`
+   - `{{.output.directory}}/design.md`
+
+If ANY file is missing or in the wrong location:
+- STOP validation
+- List which files are missing or misplaced
+- Move/create files in the correct location before proceeding
+- This is a BLOCKING issue - design is NOT ready until files are correct
+
+**Content Validation checklist:**
+- [ ] Problem statement is addressed
+- [ ] All hard constraints are met
+- [ ] Implementation steps are concrete and ordered
+- [ ] Acceptance criteria are testable
+- [ ] Edge cases are covered
+- [ ] Error handling is specified
+- [ ] No ambiguous language ("might", "could", "maybe")
+- [ ] Dependencies are identified
+- [ ] Scope is clear (what's in, what's out)
+
+**Check for:**
+- Missing steps or gaps in implementation plan
+- Unstated assumptions
+- Circular dependencies
+- Unrealistic scope
+- Missing error paths
+
+**If issues found:**
+- Update design.md to address them
+- Note what was changed
+
+**Output structure:**
+```markdown
+# Review: {{.problem}}
+
+## File Location Validation
+**Output Directory:** `{{.output.directory}}/`
+
+| File | Status | Location |
+|------|--------|----------|
+| research.md | ✓ Found / ✗ Missing | path |
+| alternatives.md | ✓ Found / ✗ Missing | path |
+| analysis.md | ✓ Found / ✗ Missing | path |
+| decision.md | ✓ Found / ✗ Missing | path |
+| design.md | ✓ Found / ✗ Missing | path |
+
+**File Validation:** PASS / FAIL
+
+(If FAIL, list corrective actions taken)
+
+## Content Validation Checklist
+- [x] Problem statement addressed
+- [x] Hard constraints met
+...
+
+## Issues Found
+(List any issues discovered)
+
+## Changes Made
+(What was updated in design.md)
+
+## Final Status
+**File Location:** PASS/FAIL
+**Content Quality:** PASS/FAIL
+**Ready for Implementation:** Yes/No
+
+## Notes for Implementer
+(Any context that didn't fit in design.md)
+```
+
+**Deliverable:** review.md confirming design is implementation-ready
+"""

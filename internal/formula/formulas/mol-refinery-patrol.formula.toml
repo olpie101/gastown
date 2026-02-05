@@ -1,7 +1,7 @@
 description = """
 Merge queue processor patrol loop.
 
-The Refinery is the Engineer in the engine room. You process polecat branches, merging them to their effective target branches one at a time with sequential rebasing.
+The Refinery is the Engineer in the engine room. You process polecat branches, merging them to the target branch one at a time with sequential rebasing.
 
 **The Scotty Test**: Before proceeding past any failure, ask yourself: "Would Scotty walk past a warp core leak because it existed before his shift?"
 
@@ -37,8 +37,11 @@ Witness                    Refinery                      Git        Polecat
 After successful merge, Refinery sends MERGED mail back to Witness so it can
 complete cleanup (nuke the polecat worktree).
 
-On failure, Refinery sends FIX_NEEDED directly to the Polecat. The polecat
-fixes the code in-place and resubmits the MR without losing context.
+On failure during validation, Refinery sends FIX_NEEDED directly to the Polecat.
+The polecat fixes the code in-place and resubmits the MR without losing context.
+
+For protected branches, PRs are created and tracked via gh:pr gates. The poll-pr-gates
+plugin monitors PR status and closes gates when PRs merge, triggering GATE_CLEARED mail.
 
 ## CRITICAL: Read Step Instructions Before Acting
 
@@ -60,7 +63,7 @@ source of truth.
 | setup_command | (empty) | Setup/install command (e.g., `pnpm install`). Empty = skip. |
 | typecheck_command | (empty) | Type check command (e.g., `tsc --noEmit`). Empty = skip. |
 | lint_command | (empty) | Lint command (e.g., `eslint .`). Empty = skip. |
-| test_command | go test ./... | Test command to run (if run_tests is true) |
+| test_command | (empty) | Test command to run (if run_tests is true). Empty = skip. |
 | build_command | (empty) | Build command (e.g., `go build ./...`). Empty = skip. |
 | target_branch | main | Default target branch for merges |
 | delete_merged_branches | true | Whether to delete source branches after merge |
@@ -76,6 +79,10 @@ resolve that placeholder with this rule:
 - If integration_branch_refinery_enabled = "true": use MR target when present, otherwise {{target_branch}}.
 - If integration_branch_refinery_enabled = "false": always use {{target_branch}}.
 
+Once resolved, remember this value as TARGET_BRANCH for the remainder of the patrol
+cycle. This is not a bash variable — it is a value you carry in context and substitute
+wherever you see $TARGET_BRANCH in step instructions.
+
 ## FORBIDDEN Actions
 
 - FORBIDDEN: Landing integration branches to the default branch via raw git commands (`git merge`, `git push`).
@@ -87,7 +94,7 @@ resolve that placeholder with this rule:
 You MUST process steps in strict DAG order. Walk through each step sequentially,
 unless you are explicitly told to skip to a step."""
 formula = "mol-refinery-patrol"
-version = 12
+version = 13
 
 [vars]
 [vars.wisp_type]
@@ -119,8 +126,8 @@ description = "Lint command (e.g., eslint .). Empty = skip."
 default = ""
 
 [vars.test_command]
-description = "Test command to run (if run_tests is true)"
-default = "go test ./..."
+description = "Test command to run (if run_tests is true). Empty = skip."
+default = ""
 
 [vars.build_command]
 description = "Build command (e.g., go build ./...). Empty = skip."
@@ -183,10 +190,58 @@ A polecat's work is ready for merge. Extract details and track for processing.
 ```
 
 **IMPORTANT**: You MUST track the polecat name, MR bead ID, AND message ID - you will need them
-in merge-push step to send MERGED notification, close the MR bead, and archive the mail.
+in spawn-merge-workflow step to send MERGED notification, close the MR bead, and archive the mail.
 
 Mark as read. The work will be processed in queue-scan/process-branch.
-**Do NOT archive yet** - archive after merge/reject decision in merge-push step.
+**Do NOT archive yet** - archive after merge/reject decision in spawn-merge-workflow step.
+
+**GATE_CLEARED** (from poll-pr-gates plugin via gt gate wake):
+A gate has closed, meaning a PR was merged. Resume and complete the wisp workflow.
+
+**NOTE**: The GATE_CLEARED message may include "Run 'gt resume'" - ignore this.
+Follow the steps below to properly complete the merge workflow.
+
+**Step 1: Locate the MR bead and wisp**
+
+Extract the gate ID from the mail subject (e.g., "GATE CLEARED: gt-wisp-xyz").
+
+The MR bead is labeled with the gate ID for lookup:
+```bash
+bd list --label "gate:<gate-id>"
+```
+
+The wisp is the open "blocks" dependency on that MR bead:
+```bash
+bd dep list <mr-bead>
+```
+
+Look for the open epic with dependency_type "blocks" - this is the wisp.
+
+If no MR bead found: warn and archive the mail.
+If no wisp found (legacy MR): close the MR bead directly with reason "Merged via PR #<number> (legacy)" and archive.
+
+**Step 2: Close the gate step**
+
+The wisp has a "Wait for PR merge" step that was blocked by the gate.
+Since the gate is now closed, close this step with reason "Gate closed".
+
+**Step 3: Complete remaining wisp steps**
+
+Run `bd ready --mol <wisp-id>` to find the next ready step.
+Execute its instructions (typically "Cleanup after PR merge" which sends MERGED notification).
+Close each step after completing its instructions.
+Repeat until no more ready steps.
+
+**Step 4: Close wisp and MR bead**
+
+Once all steps complete:
+- Close the wisp with reason "Merge workflow complete"
+- Close the MR bead with reason "Merged via PR #<number>" (get PR number from `pr:` label on MR bead)
+
+**Step 5: Archive mail**
+```bash
+gt mail archive <message-id>
+```
 
 **PATROL: Wake up**:
 Witness detected MRs waiting but refinery idle. Acknowledge and archive:
@@ -228,23 +283,41 @@ as branches may exist without MR beads, or MR beads may exist for already-merged
 
 If queue empty, skip to "check-integration-branches" step.
 
-For each MR in the queue, verify the branch still exists:
+For each MR in the queue:
+
+**Step 1: Check for blocking dependency (wisp in progress)**
+```bash
+BLOCKER=$(bd dep list <mr-bead-id> --json | jq -r '.[] | select(.status == "open" and .dependency_type == "blocks") | .id' | head -1)
+```
+
+If blocker exists: This MR has a merge workflow (wisp) in progress. Skip processing.
+- For protected branches: wisp is waiting at gh:pr gate for PR merge
+- For unprotected branches: wisp steps still executing (rare)
+
+The poll-pr-gates plugin will close the gate when PR merges, triggering GATE_CLEARED mail.
+
+**Step 2: Verify branch exists (for MRs without blockers)**
 ```bash
 git branch -r | grep <branch>
 ```
 
-If branch doesn't exist for a queued MR:
+If branch doesn't exist for a queued MR without a blocker:
 - Close the MR bead: `bd close <mr-id> --reason "Branch no longer exists"`
 - Remove from processing queue
 
-Track verified MR list for this cycle."""
+Track:
+- MRs with blockers (skip - wisp in progress)
+- MRs without blockers (process this cycle)"""
 
 [[steps]]
 id = "process-branch"
 title = "Mechanical rebase"
 needs = ["queue-scan"]
 description = """
-Pick next branch from queue. Attempt mechanical rebase on the MR's effective target branch.
+Pick next branch from queue. Attempt mechanical rebase on current target branch.
+
+**Step 0: Resolve TARGET_BRANCH** (if not already set)
+Resolve the target branch using the **Target Resolution Rule** above and remember it as TARGET_BRANCH.
 
 **Config: integration_branch_refinery_enabled = {{integration_branch_refinery_enabled}}**
 **Config: target_branch = {{target_branch}}**
@@ -299,8 +372,8 @@ git rebase --abort
 
 2. **Record conflict metadata**:
 ```bash
-# Capture target SHA for reference
-TARGET_SHA=$(git rev-parse origin/<rebase-target>)
+# Capture target branch SHA for reference
+TARGET_SHA=$(git rev-parse origin/$TARGET_BRANCH)
 BRANCH_SHA=$(git rev-parse origin/<polecat-branch>)
 ```
 
@@ -313,12 +386,12 @@ bd create --type=task --priority=1 \
 Original MR: <mr-bead-id>
 Branch: <polecat-branch>
 Original Issue: <issue-id>
-Conflict with target <rebase-target> at: ${TARGET_SHA}
+Conflict with $TARGET_BRANCH at: ${TARGET_SHA}
 Branch SHA: ${BRANCH_SHA}
 
 ## Instructions
 1. Clone/checkout the branch
-2. Rebase on target: git rebase origin/<rebase-target>
+2. Rebase on current target branch: git rebase origin/$TARGET_BRANCH
 3. Resolve conflicts
 4. Force push: git push -f origin <branch>
 5. Close this task when done
@@ -513,7 +586,7 @@ If any check or test FAILED:
 - [ ] Temp branch cleaned up (NOT the polecat branch!)
 - [ ] MERGE_READY message archived
 
-**GATE REQUIREMENT**: You CANNOT proceed to merge-push without:
+**GATE REQUIREMENT**: You CANNOT proceed to spawn-merge-workflow without:
 - All quality checks and tests passing, OR
 - Bead filed (or existing duplicate confirmed) for the pre-existing failure
 
@@ -523,167 +596,119 @@ re-implementing fixes. You are a mechanical merge processor.
 This is non-negotiable. Never disavow. Never "note and proceed." """
 
 [[steps]]
-id = "merge-push"
-title = "Merge and push"
+id = "spawn-merge-workflow"
+title = "Spawn merge workflow for MR"
 needs = ["handle-failures"]
 description = """
-Merge and push. CRITICAL: Notifications come IMMEDIATELY after push.
+Spawn a mol-mr-merge wisp and execute its steps. The refinery follows the molecule's
+instructions without hardcoded knowledge of specific steps.
 
-**Config: integration_branch_refinery_enabled = {{integration_branch_refinery_enabled}}**
-**Config: target_branch = {{target_branch}}**
-**Config: delete_merged_branches = {{delete_merged_branches}}**
 **Config: merge_strategy = {{merge_strategy}}**
 
-**Step 1: Merge (strategy-dependent)**
-
-Determine `<merge-target>` using the **Target Resolution Rule** above.
-
-**If merge_strategy = "direct" (default):**
-
-```bash
-git checkout <merge-target>
-git merge --ff-only temp
-git push origin <merge-target>
-```
-
-**Step 1.5 (direct only): VERIFY PUSH SUCCEEDED (CRITICAL - PATCH-003)**
-
-Push can fail silently (network, auth, hooks). IMMEDIATELY verify:
-```bash
-git fetch origin
-LOCAL_SHA=$(git rev-parse <merge-target>)
-REMOTE_SHA=$(git rev-parse origin/<merge-target>)
-echo "Local:  $LOCAL_SHA"
-echo "Remote: $REMOTE_SHA"
-```
-
-**If SHAs match**: Push succeeded. Continue to Step 2.
-
-**If SHAs differ**: STOP. Push failed silently.
-- DO NOT send MERGED notification
-- DO NOT close MR bead
-- DO NOT delete branch
-- Debug the push failure (check `git push` output, network, auth)
-- Retry push and verify again before proceeding
-
-**If merge_strategy = "pr":**
-
-Push the rebased branch and create a GitHub PR instead of direct merge.
-
-```bash
-# Push the rebased polecat branch (force-push since we rebased)
-git checkout temp
-git push origin temp:refs/heads/<polecat-branch> --force-with-lease
-
-# Create the PR using bead metadata for title/description
-PR_URL=$(gh pr create \
-  --base <merge-target> \
-  --head <polecat-branch> \
-  --title "<issue-title> (<issue-id>)" \
-  --body "## Summary
-
-Automated merge from polecat branch.
-
-- **Issue**: <issue-id>
-- **Polecat**: <polecat-name>
-- **Branch**: <polecat-branch>
-- **Tests**: Passed (verified by refinery)
-
 ---
-*Created by Gas Town Refinery*")
-echo "PR created: $PR_URL"
-```
 
-If the PR already exists for this branch, `gh pr create` will fail. In that case,
-find the existing PR:
-```bash
-PR_URL=$(gh pr view <polecat-branch> --json url -q '.url')
-```
-
-**Step 1.5 (pr only): VERIFY PR CREATED**
+## Step 1: Create mol-mr-merge wisp
 
 ```bash
-gh pr view <polecat-branch> --json url,state -q '.url + " " + .state'
+MOL_JSON=$(bd mol wisp mol-mr-merge \
+    --var mr_bead="${MR_BEAD_ID}" \
+    --var polecat_branch="${POLECAT_BRANCH}" \
+    --var target_branch="${TARGET_BRANCH}" \
+    --var merge_strategy="{{merge_strategy}}" \
+    --var repo="${REPO_PATH}" \
+    --var awaiter="${BD_ACTOR}" \
+    --json)
+
+MOL_ROOT=$(echo "$MOL_JSON" | jq -r '.new_epic_id')
+echo "Created merge workflow: ${MOL_ROOT}"
 ```
 
-If the PR was not created or is in an unexpected state, debug and retry.
+## Step 2: Add blocks dependency
 
-⚠️ **STOP HERE - DO NOT PROCEED UNTIL STEPS 1.5 AND 2-3 COMPLETE**
-
-**Step 2: Send MERGED Notification (REQUIRED - DO THIS IMMEDIATELY)**
-
-RIGHT NOW, before any cleanup, send MERGED mail to Witness.
-
-**If merge_strategy = "direct":**
+MR cannot close until wisp completes:
 ```bash
-gt mail send <rig>/witness -s "MERGED <polecat-name>" -m "Branch: <branch>
-Issue: <issue-id>
-Merged-At: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+bd dep add "${MR_BEAD_ID}" "${MOL_ROOT}" --type blocks
 ```
 
-**If merge_strategy = "pr":**
-```bash
-gt mail send <rig>/witness -s "MERGED <polecat-name>" -m "Branch: <branch>
-Issue: <issue-id>
-PR: ${PR_URL}
-Merged-At: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-```
+## Step 3: Execute wisp steps until blocked or complete
 
-Note: In PR mode, "MERGED" means "PR created and ready for review/merge".
-The actual merge happens when the PR is merged on GitHub (by maintainer or CI).
-
-This signals the Witness to nuke the polecat worktree. WITHOUT THIS NOTIFICATION,
-POLECAT WORKTREES ACCUMULATE INDEFINITELY AND THE LIFECYCLE BREAKS.
-
-**Step 3: Post-merge cleanup (REQUIRED — single command)**
-
-This single command handles closing the MR bead, closing the source issue, and
-deleting the remote polecat branch (respects delete_merged_branches config):
+Loop using `bd ready --mol ${MOL_ROOT}` to find executable steps:
 
 ```bash
-gt mq post-merge <rig> <mr-bead-id>
+while true; do
+    # Find next ready step
+    NEXT_STEP=$(bd ready --mol "${MOL_ROOT}" --json | jq -r '.[0].id // empty')
+
+    if [ -z "$NEXT_STEP" ]; then
+        # No ready steps - either blocked by gate or complete
+        break
+    fi
+
+    # Get step details
+    STEP_JSON=$(bd show "${NEXT_STEP}" --json)
+    STEP_DESC=$(echo "$STEP_JSON" | jq -r '.[0].description')
+
+    # Execute step by following its description
+    echo "Executing step: ${NEXT_STEP}"
+    echo "$STEP_DESC"
+    # Follow the instructions in STEP_DESC
+
+    # Close step after execution
+    bd close "${NEXT_STEP}" --reason "Step complete"
+done
 ```
 
-The MR bead ID was in the MERGE_READY message or find via:
+## Step 4: Check if blocked by gate or complete
+
 ```bash
-bd list --type=merge-request --status=open | grep <polecat-name>
+# Check for open gates in this wisp
+OPEN_GATE=$(bd list --parent "${MOL_ROOT}" --type gate --json | jq -r '.[] | select(.status == "open") | .id' | head -1)
+
+if [ -n "$OPEN_GATE" ]; then
+    # Blocked by gate - pr strategy workflow waiting for PR merge
+    # The create-pr step already configured the gate (await-id, labels, waiter)
+    echo "Blocked by gate: ${OPEN_GATE} - proceeding to next MR"
+
+    # DO NOT close wisp or MR bead - waiting for gate
+    # DO NOT archive MERGE_READY mail - work not complete
+else
+    # No open gates - wisp is complete
+    echo "Wisp complete: ${MOL_ROOT}"
+
+    # Close wisp epic
+    bd close "${MOL_ROOT}" --reason "Merge workflow complete"
+
+    # Close MR bead (blocker resolved)
+    bd close "${MR_BEAD_ID}" --reason "Merged to ${TARGET_BRANCH}"
+
+    # Archive the MERGE_READY mail
+    gt mail archive "${MERGE_READY_MSG_ID}"
+fi
 ```
 
-Verify the command output shows all steps succeeded (✓ for each).
+**VERIFICATION GATE**: You CANNOT close this step without verifying:
 
-**Note**: In PR mode, the source branch is NOT deleted (it's the PR head branch).
-`delete_merged_branches` is ignored when merge_strategy=pr — the branch is cleaned
-up when the PR is merged on GitHub.
-
-**Step 4: Archive the MERGE_READY mail (REQUIRED)**
-```bash
-gt mail archive <merge-ready-message-id>
-```
-The message ID was tracked when you processed inbox-check.
-
-**Step 5: Cleanup temp branch**
-```bash
-git branch -d temp
-```
-
-**VERIFICATION GATE**: You CANNOT proceed to loop-check without:
-- [x] MERGED mail sent to witness (with PR URL if merge_strategy=pr)
-- [x] Post-merge cleanup completed (MR closed, source issue closed, branch deleted)
+For merge_strategy = "direct":
+- [x] MERGED mail sent to witness (done by mol-mr-merge wisp)
+- [x] MR bead closed
+- [x] Source issue closed
 - [x] MERGE_READY mail archived
 
-If you skipped notifications or archiving, GO BACK AND DO THEM NOW.
-
-Target branch has moved. Any remaining branches need rebasing on new baseline."""
+For merge_strategy = "pr":
+- [x] Wisp blocked by gate (waiting for PR merge)
+- [x] Gate properly configured with await_id and labels
+- [ ] MR bead remains open (will close on GATE_CLEARED)
+- [ ] MERGE_READY mail NOT archived (will archive on GATE_CLEARED)"""
 
 [[steps]]
 id = "loop-check"
 title = "Check for more work"
-needs = ["merge-push"]
+needs = ["spawn-merge-workflow"]
 description = """
 More branches to process?
 
 **Entry paths:**
-- Normal: After successful merge-push
+- Normal: After successful spawn-merge-workflow
 - Conflict-skip: After process-branch created conflict-resolution task
 
 If yes: Return to process-branch with next branch.
@@ -724,7 +749,7 @@ Include in summary:
 - Any escalations sent
 
 **Conflict tracking is important** for monitoring MQ health. If many branches
-conflict, it may indicate target branches are moving too fast or branches are too stale.
+conflict, it may indicate the target branch is moving too fast or branches are too stale.
 
 This becomes the digest when the patrol is squashed."""
 
@@ -827,7 +852,7 @@ For each open MR bead:
    - If `origin/<merge-target>` is missing (e.g. deleted integration branch), use `{{target_branch}}`.
 4. Verify landed work: `git log origin/<verification-target> --oneline | grep "<source_issue>"`
 5. If work found → close MR with reason "Merged (verified on <verification-target>; merge target was <merge-target>)"
-6. If work NOT found → investigate before closing:
+6. If work NOT on target branch → investigate before closing:
    - Check source_issue validity (should be gt-xxxxx, not branch name)
    - Search reflog/dangling commits if possible
    - If unverifiable, close with reason "Unverifiable - no audit trail"

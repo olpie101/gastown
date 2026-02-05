@@ -1,0 +1,328 @@
+# MR merge workflow with conditional paths for protected/unprotected branches.
+#
+# Usage:
+#   1. Cook the formula:
+#      bd cook mol-mr-merge
+#
+#   2. Create wisp with branch protection status:
+#      bd mol wisp mol-mr-merge \
+#        --var mr_bead=<mr-bead-id> \
+#        --var branch_protected=true \
+#        --var awaiter=<rig>/refinery \
+#        --json
+#
+#   The agent tracks polecat-branch, target-branch, rig, issue-id from spawn context.
+#
+#   The create-pr step handles all gate configuration:
+#   - Updates gate await_id with PR number
+#   - Labels MR bead for GATE_CLEARED lookup
+#   - Registers awaiter (if provided)
+#
+# Flows:
+#   UNPROTECTED: direct-merge -> direct-cleanup
+#   PROTECTED:   push-rebased -> create-pr -> wait-for-pr (gate) -> post-pr-cleanup
+#
+description = """MR merge workflow with conditional paths for protected/unprotected branches.
+
+Spawned by refinery patrol to handle MR merging. Each MR gets its own wisp instance.
+
+For UNPROTECTED branches:
+- Direct merge to target branch
+- Cleanup and notify witness
+
+For PROTECTED branches:
+- Push rebased branch
+- Create PR
+- Wait for PR merge via gh:pr gate (poll-pr-gates monitors)
+- Post-merge cleanup and notify witness
+
+The gate step allows refinery to continue processing other MRs while waiting
+for PR review/merge. When the gate closes, refinery receives GATE_CLEARED mail
+and continues the wisp from post-pr-cleanup."""
+formula = "mol-mr-merge"
+type = "workflow"
+version = 1
+
+# =============================================================================
+# UNPROTECTED BRANCH PATH
+# =============================================================================
+
+[[steps]]
+id = "direct-merge"
+title = "Direct merge <polecat-branch> to <target-branch>"
+condition = "!{{branch_protected}}"
+description = """
+**Unprotected branch flow - Direct merge**
+
+Merge the polecat branch directly to target (no PR required).
+
+```bash
+git fetch origin <target-branch>
+git checkout <target-branch>
+git merge --ff-only origin/<polecat-branch>
+git push origin <target-branch>
+```
+
+**VERIFY PUSH SUCCEEDED (CRITICAL)**
+
+Push can fail silently (network, auth, hooks). IMMEDIATELY verify:
+```bash
+git fetch origin
+LOCAL_SHA=$(git rev-parse <target-branch>)
+REMOTE_SHA=$(git rev-parse origin/<target-branch>)
+echo "Local:  $LOCAL_SHA"
+echo "Remote: $REMOTE_SHA"
+```
+
+**If SHAs match**: Push succeeded. Proceed to direct-cleanup.
+**If SHAs differ**: STOP. Push failed silently.
+- DO NOT proceed to direct-cleanup
+- DO NOT send MERGED notification
+- DO NOT delete branch
+- Debug the push failure (check `git push` output, network, auth)
+- Retry push and verify again before proceeding
+
+On failure (e.g., not fast-forward), escalate to witness."""
+
+[[steps]]
+id = "direct-cleanup"
+title = "Cleanup after direct merge"
+needs = ["direct-merge"]
+condition = "!{{branch_protected}}"
+description = """
+**Unprotected branch flow - Cleanup**
+
+Run post-merge cleanup. This handles closing the MR bead, closing the source issue,
+deleting the remote polecat branch (respects delete_merged_branches config), and
+sending the MERGED notification to the witness.
+
+```bash
+gt mq post-merge <rig> <mr-bead-id>
+```
+
+**VERIFICATION GATE**: You CANNOT close this step without:
+- [x] MERGED mail sent to witness
+- [x] MR bead closed
+- [x] Source issue closed
+- [x] Polecat branch deleted
+
+Verify the command output shows all steps succeeded (✓ for each).
+
+After this step, the wisp is complete and can be closed."""
+
+# =============================================================================
+# PROTECTED BRANCH PATH
+# =============================================================================
+
+[[steps]]
+id = "push-rebased"
+title = "Push rebased <polecat-branch> for PR"
+condition = "{{branch_protected}}"
+description = """
+**Protected branch flow - Push rebased branch**
+
+Push the rebased branch to origin for PR creation.
+
+```bash
+git push -f origin <polecat-branch>
+```
+
+**VERIFY PUSH SUCCEEDED (CRITICAL)**
+
+Push can fail silently (network, auth, hooks). IMMEDIATELY verify:
+```bash
+git fetch origin
+LOCAL_SHA=$(git rev-parse <polecat-branch>)
+REMOTE_SHA=$(git rev-parse origin/<polecat-branch>)
+echo "Local:  $LOCAL_SHA"
+echo "Remote: $REMOTE_SHA"
+```
+
+**If SHAs match**: Push succeeded. Proceed to create-pr.
+**If SHAs differ**: STOP. Push failed silently.
+- DO NOT proceed to create-pr
+- Debug the push failure (check `git push` output, network, auth)
+- Retry push and verify again before proceeding
+
+The branch should already be rebased on target by refinery's earlier steps."""
+
+[[steps]]
+id = "create-pr"
+title = "Create PR for <polecat-branch>"
+needs = ["push-rebased"]
+condition = "{{branch_protected}}"
+description = """
+**Protected branch flow - Create PR and configure gate**
+
+Before creating a PR, check if one already exists for this branch.
+
+**Check 1: Existing open PR**
+```bash
+gh pr list --head <polecat-branch> --state open --json number -q '.[0].number'
+```
+
+If an open PR exists:
+- Use that PR number
+- Update the PR body to reflect the latest changes (new commits may have been pushed):
+  ```bash
+  # Gather updated context
+  git log origin/<target-branch>..origin/<polecat-branch> --pretty=format:"- %s" --reverse
+  git diff --stat origin/<target-branch>..origin/<polecat-branch>
+  bd show {{mr_bead}} --json
+
+  # Update PR body with latest info
+  gh pr edit <pr-number> --body "<updated-body>"
+  ```
+- Proceed to gate configuration below
+
+**Check 2: Already merged PR**
+```bash
+gh pr list --head <polecat-branch> --state merged --json number -q '.[0].number'
+```
+
+If a merged PR exists:
+- The work has already landed
+- Close this step (create-pr) with reason "PR already merged"
+- Close the gate bead with reason "PR already merged"
+- Close the wait-for-pr step with reason "PR already merged"
+- Proceed to post-pr-cleanup step (send MERGED notification, close wisp/MR bead)
+
+**Create PR (only if no existing PR)**
+
+If neither check finds a PR, create one with a well-structured body.
+
+1. **Gather context for PR body:**
+   ```bash
+   # Get commit messages from the branch
+   git log origin/<target-branch>..origin/<polecat-branch> --pretty=format:"- %s" --reverse
+
+   # Get file change summary
+   git diff --stat origin/<target-branch>..origin/<polecat-branch>
+
+   # Get issue details from the MR bead
+   bd show {{mr_bead}} --json
+   ```
+
+2. **Create PR with structured body:**
+   - Base: <target-branch>
+   - Head: <polecat-branch>
+   - Title: Use the original issue title (from bead), or summarize from commits
+   - Body: Construct from gathered context using this format:
+
+   ```markdown
+   ## Summary
+   <Synthesize a clear summary from commit messages and file changes.
+    Be explicit about what was changed - e.g., "Added X", "Fixed Y", "Updated Z">
+
+   ## Source
+   - Issue: <issue-id> (<issue-title>)
+   - Branch: <polecat-branch>
+   - Worker: <rig>/polecats/<polecat-name>
+
+   ## Test Plan
+   <Based on the type of changes, create appropriate checklist:
+    - For code changes: tests pass, CI checks
+    - For docs: documentation review
+    - For config: validation steps>
+   ```
+
+   Use `gh pr create` with the title and body:
+   ```bash
+   gh pr create --base <target-branch> --head <polecat-branch> \
+     --title "<title>" --body "<constructed-body>"
+   ```
+
+After creation, capture the PR number.
+
+**Configure gate**
+
+With the PR number (from existing or newly created):
+
+1. Find the gate step (sibling of this step in the wisp)
+2. Update gate with await_id = PR number:
+   ```bash
+   bd update <gate-id> --await-id=<pr-number>
+   ```
+3. Label MR bead for GATE_CLEARED lookup:
+   ```bash
+   bd update {{mr_bead}} --add-label="pr:<pr-number>" --add-label="gate:<gate-id>"
+   ```
+4. Register awaiter if provided:
+   {{#if awaiter}}
+   ```bash
+   bd gate add-waiter <gate-id> "{{awaiter}}"
+   ```
+   {{/if}}
+
+After completing all steps, this step can be closed. The wisp will block at the
+wait-for-pr gate until the PR is merged."""
+
+[[steps]]
+id = "wait-for-pr"
+title = "Wait for PR merge"
+needs = ["create-pr"]
+condition = "{{branch_protected}}"
+description = """
+**Protected branch flow - Gate step**
+
+This step blocks until the PR is merged.
+
+The gate's await_id is set after PR creation (see create-pr step).
+The poll-pr-gates plugin monitors gh:pr gates and closes them when PRs merge.
+
+When the gate closes:
+1. Waiters receive GATE_CLEARED mail
+2. Refinery continues this wisp from post-pr-cleanup step
+
+**Gate properties:**
+- Type: gh:pr (GitHub PR)
+- Timeout: 7d (auto-close if PR not merged within 7 days)
+- await_id: Set at runtime to PR number"""
+
+[steps.gate]
+type = "gh:pr"
+id = ""          # Set at runtime via: bd update <gate-id> --await-id=<pr_number>
+timeout = "7d"
+
+[[steps]]
+id = "post-pr-cleanup"
+title = "Cleanup after PR merge"
+needs = ["wait-for-pr"]
+condition = "{{branch_protected}}"
+description = """
+**Protected branch flow - Post-merge cleanup**
+
+After PR is merged, run post-merge cleanup. This handles closing the MR bead,
+closing the source issue, deleting the remote polecat branch (if not auto-deleted
+by GitHub), and sending the MERGED notification to the witness.
+
+```bash
+gt mq post-merge <rig> <mr-bead-id>
+```
+
+**VERIFICATION GATE**: You CANNOT close this step without:
+- [x] MERGED mail sent to witness
+- [x] MR bead closed
+- [x] Source issue closed
+
+Verify the command output shows all steps succeeded (✓ for each).
+
+After this step, the wisp is complete and can be closed.
+The MR bead's blocking dependency (this wisp) is now resolved,
+allowing the MR bead to be closed."""
+
+# =============================================================================
+# VARIABLES
+# =============================================================================
+
+[vars]
+[vars.mr_bead]
+description = "MR bead ID being merged (e.g., gt-mr-abc)"
+required = true
+
+[vars.branch_protected]
+description = "Whether target branch is protected (true/false). Determines flow path."
+required = true
+
+[vars.awaiter]
+description = "Component to notify when gate clears (e.g., rig/refinery). If provided, registers as waiter on the gate."
