@@ -805,6 +805,26 @@ func DefaultBase() *HooksConfig {
 	}
 }
 
+// ApplyOverridesTo loads a settings.json file, computes the expected hooks
+// for the given role (base + overrides), replaces the hooks section, and writes back.
+// This allows role-specific hook exclusions (e.g., refinery excluding pr-workflow guard).
+func ApplyOverridesTo(settingsPath, role string) error {
+	expected, err := ComputeExpected(role)
+	if err != nil {
+		return err
+	}
+	settings, err := LoadSettings(settingsPath)
+	if err != nil {
+		return err
+	}
+	settings.Hooks = *expected
+	data, err := MarshalSettings(settings)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(settingsPath, data, 0600)
+}
+
 // GetApplicableOverrides returns the override keys in order of specificity
 // for a given target. More specific overrides are applied later (and win).
 //
