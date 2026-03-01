@@ -60,6 +60,7 @@ func (c *CheckMisclassifiedWisps) Run(ctx *CheckContext) *CheckResult {
 	var totalProbeErrors int
 
 	if useDolt {
+		// Dolt path covers all databases including "hq" (town-level beads).
 		for _, db := range databases {
 			prefix := db + "-"
 			rigDir := beads.GetRigPathForPrefix(ctx.TownRoot, prefix)
