@@ -156,7 +156,7 @@ func TestBuildRefineryPatrolVars_FullConfig(t *testing.T) {
 	}
 
 	// Verify empty commands are NOT included
-	for _, shouldBeAbsent := range []string{"setup_command", "typecheck_command", "lint_command", "build_command"} {
+	for _, shouldBeAbsent := range []string{"setup_command", "typecheck_command", "lint_command", "build_command", "merge_strategy"} {
 		if _, ok := varMap[shouldBeAbsent]; ok {
 			t.Errorf("%q should be omitted when empty", shouldBeAbsent)
 		}
@@ -309,6 +309,7 @@ func TestBuildRefineryPatrolVars_BoolFormat(t *testing.T) {
 		TestCommand:                      "make test",
 		BuildCommand:                     "make build",
 		DeleteMergedBranches:             &falseVal2,
+		MergeStrategy:                    "pr",
 	}
 	settings := config.RigSettings{
 		Type:       "rig-settings",
@@ -359,6 +360,9 @@ func TestBuildRefineryPatrolVars_BoolFormat(t *testing.T) {
 	if got := varMap["build_command"]; got != "make build" {
 		t.Errorf("build_command = %q, want %q", got, "make build")
 	}
+	if got := varMap["merge_strategy"]; got != "pr" {
+		t.Errorf("merge_strategy = %q, want %q", got, "pr")
+	}
 }
 
 func TestBuildRefineryPatrolVars_DefaultBranchWithoutMQ(t *testing.T) {
@@ -398,6 +402,64 @@ func TestBuildRefineryPatrolVars_DefaultBranchWithoutMQ(t *testing.T) {
 	if got := varMap["target_branch"]; got != "gastown" {
 		t.Errorf("target_branch = %q, want %q (should read rig config even without MQ settings)", got, "gastown")
 	}
+}
+
+func TestBuildRefineryPatrolVars_MergeStrategy(t *testing.T) {
+	setup := func(t *testing.T, mq *config.MergeQueueConfig) map[string]string {
+		t.Helper()
+		tmpDir := t.TempDir()
+		rigDir := filepath.Join(tmpDir, "testrig")
+		settingsDir := filepath.Join(rigDir, "settings")
+		if err := os.MkdirAll(settingsDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		settings := config.RigSettings{
+			Type:       "rig-settings",
+			Version:    1,
+			MergeQueue: mq,
+		}
+		data, _ := json.Marshal(settings)
+		if err := os.WriteFile(filepath.Join(settingsDir, "config.json"), data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		ctx := RoleContext{TownRoot: tmpDir, Rig: "testrig"}
+		vars := buildRefineryPatrolVars(ctx)
+		varMap := make(map[string]string)
+		for _, v := range vars {
+			parts := splitFirstEquals(v)
+			if len(parts) == 2 {
+				varMap[parts[0]] = parts[1]
+			}
+		}
+		return varMap
+	}
+
+	t.Run("pr is emitted", func(t *testing.T) {
+		mq := config.DefaultMergeQueueConfig()
+		mq.MergeStrategy = "pr"
+		varMap := setup(t, mq)
+		if got := varMap["merge_strategy"]; got != "pr" {
+			t.Errorf("merge_strategy = %q, want %q", got, "pr")
+		}
+	})
+
+	t.Run("empty is omitted", func(t *testing.T) {
+		mq := config.DefaultMergeQueueConfig()
+		mq.MergeStrategy = ""
+		varMap := setup(t, mq)
+		if _, ok := varMap["merge_strategy"]; ok {
+			t.Error("merge_strategy should be omitted when empty")
+		}
+	})
+
+	t.Run("direct is emitted when explicit", func(t *testing.T) {
+		mq := config.DefaultMergeQueueConfig()
+		mq.MergeStrategy = "direct"
+		varMap := setup(t, mq)
+		if got := varMap["merge_strategy"]; got != "direct" {
+			t.Errorf("merge_strategy = %q, want %q", got, "direct")
+		}
+	})
 }
 
 // splitFirstEquals splits a string on the first '=' only.

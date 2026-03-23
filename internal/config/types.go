@@ -1193,6 +1193,11 @@ type MergeQueueConfig struct {
 	// Nil defaults to true (merged branches are deleted).
 	DeleteMergedBranches *bool `json:"delete_merged_branches,omitempty"`
 
+	// MergeStrategy controls how the refinery merges branches: "direct" (ff-only
+	// merge + push, default) or "pr" (create GitHub PR, wait for human merge).
+	// Empty string means use the formula default ("direct").
+	MergeStrategy string `json:"merge_strategy,omitempty"`
+
 	// RetryFlakyTests is the number of times to retry flaky tests.
 	RetryFlakyTests int `json:"retry_flaky_tests"`
 
